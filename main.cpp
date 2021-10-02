@@ -505,6 +505,7 @@ int main(int argc, char* argv[])
     SDL_Texture* horse2T = IMG_LoadTexture(renderer, "res/horse2.png");
     SDL_Texture* horse3T = IMG_LoadTexture(renderer, "res/horse3.png");
     SDL_Texture* bgT = IMG_LoadTexture(renderer, "res/bg.png");
+    SDL_Texture* triangleT = IMG_LoadTexture(renderer, "res/triangle.png");
     Entity player;
     player.r.w = 64;
     player.r.h = 64;
@@ -514,16 +515,16 @@ int main(int argc, char* argv[])
     player.srcR.h = 66;
     player.srcR.x = 0;
     player.srcR.y = 0;
-    SDL_FRect secondHorse;
-    secondHorse.w = 64;
-    secondHorse.h = 64;
-    secondHorse.x = player.r.x;
-    secondHorse.y = player.r.y - secondHorse.h - 50;
-    SDL_FRect thirdHorse;
-    thirdHorse.w = 64;
-    thirdHorse.h = 64;
-    thirdHorse.x = player.r.x;
-    thirdHorse.y = player.r.y + player.r.h + 50;
+    Entity secondHorse;
+    secondHorse.r.w = 64;
+    secondHorse.r.h = 64;
+    secondHorse.r.x = player.r.x;
+    secondHorse.r.y = player.r.y - secondHorse.r.h - 50;
+    Entity thirdHorse;
+    thirdHorse.r.w = 64;
+    thirdHorse.r.h = 64;
+    thirdHorse.r.x = player.r.x;
+    thirdHorse.r.y = player.r.y + player.r.h + 50;
     SDL_FRect bgR;
     bgR.w = windowWidth;
     bgR.h = windowHeight;
@@ -534,6 +535,13 @@ int main(int argc, char* argv[])
     bg2R.h = windowHeight;
     bg2R.x = windowWidth;
     bg2R.y = 0;
+    SDL_FRect triangleR;
+    triangleR.w = 32;
+    triangleR.h = 32;
+    triangleR.x = player.r.x + player.r.w / 2 - triangleR.w / 2;
+    triangleR.y = player.r.y - triangleR.h;
+    bool isPlaying = true;
+    int selectedHorse = 0;
     Clock globalClock;
     Clock playerAnimationClock;
     while (running) {
@@ -549,6 +557,28 @@ int main(int argc, char* argv[])
             }
             if (event.type == SDL_KEYDOWN) {
                 keys[event.key.keysym.scancode] = true;
+                if (event.key.keysym.scancode == SDL_SCANCODE_SPACE) {
+                    if (isPlaying) {
+                        isPlaying = false;
+                    }
+                    else {
+                        isPlaying = true;
+                    }
+                }
+                if (!isPlaying) {
+                    if (event.key.keysym.scancode == SDL_SCANCODE_W) {
+                        ++selectedHorse;
+                        if (selectedHorse > 2) {
+                            selectedHorse = 0;
+                        }
+                    }
+                    if (event.key.keysym.scancode == SDL_SCANCODE_S) {
+                        --selectedHorse;
+                        if (selectedHorse < 0) {
+                            selectedHorse = 2;
+                        }
+                    }
+                }
             }
             if (event.type == SDL_KEYUP) {
                 keys[event.key.keysym.scancode] = false;
@@ -568,39 +598,66 @@ int main(int argc, char* argv[])
                 realMousePos.y = event.motion.y;
             }
         }
-        player.dx = 0;
-        player.dy = 0;
-        if (keys[SDL_SCANCODE_A] || keys[SDL_SCANCODE_LEFT]) {
-            player.dx = -1;
+        if (isPlaying) {
+            player.dx = 0;
+            player.dy = 0;
+            if (keys[SDL_SCANCODE_A] || keys[SDL_SCANCODE_LEFT]) {
+                player.dx = -1;
+            }
+            else if (keys[SDL_SCANCODE_D] || keys[SDL_SCANCODE_RIGHT]) {
+                player.dx = 1;
+            }
+            if (selectedHorse==0) {
+            player.r.x += player.dx * deltaTime * PLAYER_SPEED;
+            player.r.y += player.dy * deltaTime * PLAYER_SPEED;
+            }
+            else if (selectedHorse == 1) {
+                secondHorse.r.x += player.dx * deltaTime * PLAYER_SPEED;
+                secondHorse.r.y += player.dy * deltaTime * PLAYER_SPEED;
+            }
+            else if (selectedHorse == 2) {
+                thirdHorse.r.x += player.dx * deltaTime * PLAYER_SPEED;
+                thirdHorse.r.y += player.dy * deltaTime * PLAYER_SPEED;
+            }
+            player.r.x = clamp(player.r.x, 0, windowWidth - player.r.w);
+            secondHorse.r.x = clamp(secondHorse.r.x, 0, windowWidth - secondHorse.r.w);
+            thirdHorse.r.x = clamp(thirdHorse.r.x, 0, windowWidth - thirdHorse.r.w);
+            bgR.x += -deltaTime * GAME_SPEED;
+            bg2R.x += -deltaTime * GAME_SPEED;
+            if (bgR.x + bgR.w < 0) {
+                bgR.x = bg2R.x + bg2R.w;
+            }
+            if (bg2R.x + bg2R.w < 0) {
+                bg2R.x = bgR.x + bgR.w;
+            }
+            if (playerAnimationClock.getElapsedTime() > 100) {
+                player.srcR.x += player.srcR.w;
+                if (player.srcR.x >= 410) {
+                    player.srcR.x = 0;
+                }
+                playerAnimationClock.restart();
+            }
         }
-        else if (keys[SDL_SCANCODE_D] || keys[SDL_SCANCODE_RIGHT]) {
-            player.dx = 1;
+        if (selectedHorse == 0) {
+            triangleR.x = player.r.x + player.r.w / 2 - triangleR.w / 2;
+            triangleR.y = player.r.y - triangleR.h + 20;
         }
-        player.r.x += player.dx * deltaTime * PLAYER_SPEED;
-        player.r.y += player.dy * deltaTime * PLAYER_SPEED;
-        player.r.x = clamp(player.r.x, 0, windowWidth - player.r.w);
-        bgR.x += -deltaTime * GAME_SPEED;
-        bg2R.x += -deltaTime * GAME_SPEED;
+        else if (selectedHorse == 1) {
+            triangleR.x = secondHorse.r.x + secondHorse.r.w / 2 - triangleR.w / 2;
+            triangleR.y = secondHorse.r.y - triangleR.h + 20;
+        }
+        else if (selectedHorse == 2) {
+            triangleR.x = thirdHorse.r.x + thirdHorse.r.w / 2 - triangleR.w / 2;
+            triangleR.y = thirdHorse.r.y - triangleR.h + 20;
+        }
         SDL_SetRenderDrawColor(renderer, 255, 255, 255, 0);
         SDL_RenderClear(renderer);
         SDL_RenderCopyF(renderer, bgT, 0, &bgR);
         SDL_RenderCopyExF(renderer, bgT, 0, &bg2R, 0, 0, SDL_FLIP_HORIZONTAL);
-        if (bgR.x + bgR.w < 0) {
-            bgR.x = bg2R.x + bg2R.w;
-        }
-        if (bg2R.x + bg2R.w < 0) {
-            bg2R.x = bgR.x + bgR.w;
-        }
         SDL_RenderCopyExF(renderer, horseT, &player.srcR, &player.r, 0, 0, SDL_FLIP_HORIZONTAL);
-        SDL_RenderCopyExF(renderer, horse2T, &player.srcR, &secondHorse, 0, 0, SDL_FLIP_HORIZONTAL);
-        SDL_RenderCopyExF(renderer, horse3T, &player.srcR, &thirdHorse, 0, 0, SDL_FLIP_HORIZONTAL);
-        if (playerAnimationClock.getElapsedTime() > 100) {
-            player.srcR.x += player.srcR.w;
-            if (player.srcR.x >= 410) {
-                player.srcR.x = 0;
-            }
-            playerAnimationClock.restart();
-        }
+        SDL_RenderCopyExF(renderer, horse2T, &player.srcR, &secondHorse.r, 0, 0, SDL_FLIP_HORIZONTAL);
+        SDL_RenderCopyExF(renderer, horse3T, &player.srcR, &thirdHorse.r, 0, 0, SDL_FLIP_HORIZONTAL);
+        SDL_RenderCopyF(renderer, triangleT, 0, &triangleR);
         SDL_RenderPresent(renderer);
     }
     // TODO: On mobile remember to use eventWatch function (it doesn't reach this code when terminating)
