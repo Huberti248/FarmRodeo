@@ -492,7 +492,7 @@ int main(int argc, char* argv[])
     SDL_Init(SDL_INIT_EVERYTHING);
     TTF_Init();
     SDL_GetMouseState(&mousePos.x, &mousePos.y);
-    window = SDL_CreateWindow("EndlessRunner", SDL_WINDOWPOS_CENTERED, SDL_WINDOWPOS_CENTERED, windowWidth, windowHeight, SDL_WINDOW_RESIZABLE);
+    window = SDL_CreateWindow("FarmRodeo", SDL_WINDOWPOS_CENTERED, SDL_WINDOWPOS_CENTERED, windowWidth, windowHeight, SDL_WINDOW_RESIZABLE);
     renderer = SDL_CreateRenderer(window, -1, SDL_RENDERER_ACCELERATED);
     TTF_Font* robotoF = TTF_OpenFont("res/roboto.ttf", 72);
     int w, h;
@@ -501,6 +501,9 @@ int main(int argc, char* argv[])
     SDL_AddEventWatch(eventWatch, 0);
     bool running = true;
     SDL_Texture* horseT = IMG_LoadTexture(renderer, "res/horse.png");
+    SDL_Texture* horse2T = IMG_LoadTexture(renderer, "res/horse2.png");
+    SDL_Texture* horse3T = IMG_LoadTexture(renderer, "res/horse3.png");
+    SDL_Texture* bgT = IMG_LoadTexture(renderer, "res/bg.png");
     Entity player;
     player.r.w = 64;
     player.r.h = 64;
@@ -510,6 +513,16 @@ int main(int argc, char* argv[])
     player.srcR.h = 66;
     player.srcR.x = 0;
     player.srcR.y = 0;
+    SDL_FRect secondHorse;
+    secondHorse.w = 64;
+    secondHorse.h = 64;
+    secondHorse.x = player.r.x;
+    secondHorse.y = player.r.y - secondHorse.h - 50;
+    SDL_FRect thirdHorse;
+    thirdHorse.w = 64;
+    thirdHorse.h = 64;
+    thirdHorse.x = player.r.x;
+    thirdHorse.y = player.r.y + player.r.h + 50;
     Clock globalClock;
     Clock playerAnimationClock;
     while (running) {
@@ -552,12 +565,15 @@ int main(int argc, char* argv[])
         else if (keys[SDL_SCANCODE_D] || keys[SDL_SCANCODE_RIGHT]) {
             player.dx = 1;
         }
-        player.r.x += player.dx * deltaTime*PLAYER_SPEED;
-        player.r.y += player.dy * deltaTime*PLAYER_SPEED;
+        player.r.x += player.dx * deltaTime * PLAYER_SPEED;
+        player.r.y += player.dy * deltaTime * PLAYER_SPEED;
         player.r.x = clamp(player.r.x, 0, windowWidth - player.r.w);
         SDL_SetRenderDrawColor(renderer, 255, 255, 255, 0);
         SDL_RenderClear(renderer);
+        SDL_RenderCopyF(renderer, bgT, 0, 0);
         SDL_RenderCopyExF(renderer, horseT, &player.srcR, &player.r, 0, 0, SDL_FLIP_HORIZONTAL);
+        SDL_RenderCopyExF(renderer, horse2T, &player.srcR, &secondHorse, 0, 0, SDL_FLIP_HORIZONTAL);
+        SDL_RenderCopyExF(renderer, horse3T, &player.srcR, &thirdHorse, 0, 0, SDL_FLIP_HORIZONTAL);
         if (playerAnimationClock.getElapsedTime() > 100) {
             player.srcR.x += player.srcR.w;
             if (player.srcR.x >= 410) {
