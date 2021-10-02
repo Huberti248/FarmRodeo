@@ -65,6 +65,7 @@ using namespace std::chrono_literals;
 //640 x 480 (480i - Smallest PC monitor)
 
 #define PLAYER_SPEED 0.1
+#define GAME_SPEED 0.4
 
 int windowWidth = 240;
 int windowHeight = 320;
@@ -523,6 +524,16 @@ int main(int argc, char* argv[])
     thirdHorse.h = 64;
     thirdHorse.x = player.r.x;
     thirdHorse.y = player.r.y + player.r.h + 50;
+    SDL_FRect bgR;
+    bgR.w = windowWidth;
+    bgR.h = windowHeight;
+    bgR.x = 0;
+    bgR.y = 0;
+    SDL_FRect bg2R;
+    bg2R.w = windowWidth;
+    bg2R.h = windowHeight;
+    bg2R.x = windowWidth;
+    bg2R.y = 0;
     Clock globalClock;
     Clock playerAnimationClock;
     while (running) {
@@ -568,9 +579,18 @@ int main(int argc, char* argv[])
         player.r.x += player.dx * deltaTime * PLAYER_SPEED;
         player.r.y += player.dy * deltaTime * PLAYER_SPEED;
         player.r.x = clamp(player.r.x, 0, windowWidth - player.r.w);
+        bgR.x += -deltaTime * GAME_SPEED;
+        bg2R.x += -deltaTime * GAME_SPEED;
         SDL_SetRenderDrawColor(renderer, 255, 255, 255, 0);
         SDL_RenderClear(renderer);
-        SDL_RenderCopyF(renderer, bgT, 0, 0);
+        SDL_RenderCopyF(renderer, bgT, 0, &bgR);
+        SDL_RenderCopyExF(renderer, bgT, 0, &bg2R, 0, 0, SDL_FLIP_HORIZONTAL);
+        if (bgR.x + bgR.w < 0) {
+            bgR.x = bg2R.x + bg2R.w;
+        }
+        if (bg2R.x + bg2R.w < 0) {
+            bg2R.x = bgR.x + bgR.w;
+        }
         SDL_RenderCopyExF(renderer, horseT, &player.srcR, &player.r, 0, 0, SDL_FLIP_HORIZONTAL);
         SDL_RenderCopyExF(renderer, horse2T, &player.srcR, &secondHorse, 0, 0, SDL_FLIP_HORIZONTAL);
         SDL_RenderCopyExF(renderer, horse3T, &player.srcR, &thirdHorse, 0, 0, SDL_FLIP_HORIZONTAL);
