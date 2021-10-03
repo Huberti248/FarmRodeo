@@ -66,6 +66,7 @@ using namespace std::chrono_literals;
 #define PLAYER_SPEED 0.1
 #define GAME_SPEED 0.4
 #define PLAYER_FRAME_MS 50
+#define SCORE_MULTIPLIER 5
 
 int windowWidth = 240;
 int windowHeight = 320;
@@ -491,6 +492,13 @@ void UpdatePlayerPosition(const SDL_FRect triangleR, SDL_FRect& playerR) {
     playerR.y = triangleR.y + 30;
 }
 
+void UpdateScore(Text& scoreText, SDL_Renderer* renderer, TTF_Font* font, float scoreCounter) {
+    int score = scoreCounter * SCORE_MULTIPLIER;
+    scoreText.setText(renderer, font, "Score: " + std::to_string(score));
+    scoreText.dstR.w = 50 + 20.0f * std::to_string(score).length();
+    scoreText.dstR.x = windowWidth / 2.0f - scoreText.dstR.w / 2.0f;
+}
+
 int main(int argc, char* argv[])
 {
     std::srand(std::time(0));
@@ -555,6 +563,12 @@ int main(int argc, char* argv[])
     int selectedHorse = 0;
 	Mix_Music *music = Mix_LoadMUS("res/music.ogg");
 	Mix_PlayMusic(music, -1);
+    Text scoreText;
+    float scoreCounter = 0;
+    scoreText.dstR.y = 5;
+    scoreText.dstR.h = 20;
+    UpdateScore(scoreText, renderer, robotoF, scoreCounter);
+
     Clock globalClock;
     Clock playerAnimationClock;
     while (running) {
@@ -654,6 +668,9 @@ int main(int argc, char* argv[])
                 }
                 playerAnimationClock.restart();
             }
+
+            scoreCounter += deltaTime / 1000;
+            UpdateScore(scoreText, renderer, robotoF, scoreCounter);
         }
         if (selectedHorse == 0) {
             triangleR.x = player.r.x + player.r.w / 2 - triangleR.w / 2;
@@ -667,9 +684,11 @@ int main(int argc, char* argv[])
             triangleR.x = thirdHorse.r.x + thirdHorse.r.w / 2 - triangleR.w / 2;
             triangleR.y = thirdHorse.r.y - triangleR.h + 20;
         }
+        
         UpdatePlayerPosition(triangleR, playerSprite);
         SDL_SetRenderDrawColor(renderer, 255, 255, 255, 0);
         SDL_RenderClear(renderer);
+
         SDL_RenderCopyF(renderer, bgT, 0, &bgR);
         SDL_RenderCopyExF(renderer, bgT, 0, &bg2R, 0, 0, SDL_FLIP_HORIZONTAL);
         SDL_RenderCopyExF(renderer, horseT, &player.srcR, &player.r, 0, 0, SDL_FLIP_HORIZONTAL);
@@ -677,6 +696,8 @@ int main(int argc, char* argv[])
         SDL_RenderCopyExF(renderer, horse3T, &player.srcR, &thirdHorse.r, 0, 0, SDL_FLIP_HORIZONTAL);
         SDL_RenderCopyExF(renderer, playerT, 0, &playerSprite, 0, 0, SDL_FLIP_HORIZONTAL);
         SDL_RenderCopyF(renderer, triangleT, 0, &triangleR);
+        scoreText.draw(renderer);
+
         SDL_RenderPresent(renderer);
     }
 	Mix_FreeMusic(music);
