@@ -68,6 +68,10 @@ using namespace std::chrono_literals;
 #define PLAYER_FRAME_MS 50
 #define SCORE_MULTIPLIER 5
 
+#define MAX_ROTATION_PLAYER 45
+#define MIN_ROTATION_PLAYER 0
+#define ROTATION_INCREMENT 0.05
+
 int windowWidth = 240;
 int windowHeight = 320;
 SDL_Point mousePos;
@@ -487,9 +491,22 @@ struct Entity {
     int dy = 0;
 };
 
-void UpdatePlayerPosition(const SDL_FRect triangleR, SDL_FRect& playerR) { 
+void UpdatePlayerPosition(const SDL_FRect triangleR, SDL_FRect& playerR, SDL_FPoint& playerRotPoint, float& rotation, bool& rotationDir, bool isPlaying) { 
     playerR.x = triangleR.x + 5;
     playerR.y = triangleR.y + 30;
+
+    playerRotPoint.x = playerR.w - 5;
+    playerRotPoint.y = 15;
+    
+    if (isPlaying) {
+        rotation += rotationDir ? ROTATION_INCREMENT : -ROTATION_INCREMENT;
+        if (rotation > MAX_ROTATION_PLAYER) {
+            rotationDir = false;
+        }
+        else if (rotation < 0.0f) {
+            rotationDir = true;
+        }
+    }
 }
 
 void UpdateScore(Text& scoreText, SDL_Renderer* renderer, TTF_Font* font, float scoreCounter) {
@@ -559,6 +576,9 @@ int main(int argc, char* argv[])
     SDL_FRect playerSprite;
     playerSprite.w = 20;
     playerSprite.h = 20;
+    SDL_FPoint playerRotPoint;
+    bool rotationDir = true;
+    float rotation = 0.0f;
     bool isPlaying = true;
     int selectedHorse = 0;
 	Mix_Music *music = Mix_LoadMUS("res/music.ogg");
@@ -685,7 +705,7 @@ int main(int argc, char* argv[])
             triangleR.y = thirdHorse.r.y - triangleR.h + 20;
         }
         
-        UpdatePlayerPosition(triangleR, playerSprite);
+        UpdatePlayerPosition(triangleR, playerSprite, playerRotPoint, rotation, rotationDir, isPlaying);
         SDL_SetRenderDrawColor(renderer, 255, 255, 255, 0);
         SDL_RenderClear(renderer);
 
@@ -694,7 +714,7 @@ int main(int argc, char* argv[])
         SDL_RenderCopyExF(renderer, horseT, &player.srcR, &player.r, 0, 0, SDL_FLIP_HORIZONTAL);
         SDL_RenderCopyExF(renderer, horse2T, &player.srcR, &secondHorse.r, 0, 0, SDL_FLIP_HORIZONTAL);
         SDL_RenderCopyExF(renderer, horse3T, &player.srcR, &thirdHorse.r, 0, 0, SDL_FLIP_HORIZONTAL);
-        SDL_RenderCopyExF(renderer, playerT, 0, &playerSprite, 0, 0, SDL_FLIP_HORIZONTAL);
+        SDL_RenderCopyExF(renderer, playerT, 0, &playerSprite, rotation, &playerRotPoint, SDL_FLIP_HORIZONTAL);
         SDL_RenderCopyF(renderer, triangleT, 0, &triangleR);
         scoreText.draw(renderer);
 
