@@ -491,21 +491,35 @@ struct Entity {
     int dy = 0;
 };
 
-void UpdatePlayerPosition(const SDL_FRect triangleR, SDL_FRect& playerR, SDL_FPoint& playerRotPoint, float& rotation, bool& rotationDir, bool isPlaying) { 
+struct StabilityLevel {
+    float speed;
+    float maxRotation;
+};
+
+void UpdatePlayerPosition(const SDL_FRect triangleR, SDL_FRect& playerR, SDL_FPoint& playerRotPoint, int stableLevel) { 
     playerR.x = triangleR.x + 5;
     playerR.y = triangleR.y + 30;
 
-    playerRotPoint.x = playerR.w - 5;
-    playerRotPoint.y = 15;
-    
-    if (isPlaying) {
-        rotation += rotationDir ? ROTATION_INCREMENT : -ROTATION_INCREMENT;
-        if (rotation > MAX_ROTATION_PLAYER) {
-            rotationDir = false;
-        }
-        else if (rotation < 0.0f) {
-            rotationDir = true;
-        }
+    if (stableLevel >= 3) {
+        playerRotPoint.x = playerR.x;
+        playerRotPoint.y = playerR.y;
+    }
+    else{
+        playerRotPoint.x = playerR.w - 5;
+        playerRotPoint.y = 15;
+    }
+}
+
+void UpdateStability(float& rotation, bool& rotationDir, const StabilityLevel levels[], int levelIndex) {
+    int index = levelIndex > 3 ? 3 : levelIndex;
+    StabilityLevel currentLevel = levels[index];
+
+    rotation += rotationDir ? currentLevel.speed : -currentLevel.speed;
+    if (rotation > currentLevel.maxRotation) {
+        rotationDir = false;
+    }
+    else if (rotation < 0.0f) {
+        rotationDir = true;
     }
 }
 
@@ -581,6 +595,7 @@ int main(int argc, char* argv[])
     float rotation = 0.0f;
     bool isPlaying = true;
     int selectedHorse = 0;
+    int currentHorse = selectedHorse;
 	Mix_Music *music = Mix_LoadMUS("res/music.ogg");
 	Mix_PlayMusic(music, -1);
     Text scoreText;
@@ -588,6 +603,15 @@ int main(int argc, char* argv[])
     scoreText.dstR.y = 5;
     scoreText.dstR.h = 20;
     UpdateScore(scoreText, renderer, robotoF, scoreCounter);
+    const StabilityLevel stableLevels[] =
+    {
+        {0.001f, 1.0f},
+        {0.03f, 20.0f},
+        {0.06f, 60.0f},
+        {0.075f, 100.0f}
+    };
+    int stableLevel = 0;
+    Clock stableCheck;
 
     Clock globalClock;
     Clock playerAnimationClock;
@@ -608,6 +632,16 @@ int main(int argc, char* argv[])
                 keys[event.key.keysym.scancode] = true;
 				if (event.key.keysym.scancode == SDL_SCANCODE_SPACE) {
 					isPlaying = !isPlaying;
+                    if (isPlaying) {
+                        if (currentHorse != selectedHorse) {
+                            stableLevel = 0;
+                            stableCheck.restart();
+                            rotation = 0.0f;
+                        }
+                    }
+                    else {
+                        currentHorse = selectedHorse;
+                    }
 				}
                 if (!isPlaying) {
                     if (event.key.keysym.scancode == SDL_SCANCODE_W) {
@@ -691,6 +725,18 @@ int main(int argc, char* argv[])
 
             scoreCounter += deltaTime / 1000;
             UpdateScore(scoreText, renderer, robotoF, scoreCounter);
+
+            if (stableCheck.getElapsedTime() > 2000 && stableLevel <= 3) {
+                if (random(0, 100) < 40) {
+                    stableLevel++;
+                    if (stableLevel == 3) {
+                        printf("GameOver\n");
+                    }
+                }
+                printf("Level %d\n", stableLevel);
+                stableCheck.restart();
+            }
+            UpdateStability(rotation, rotationDir, stableLevels, stableLevel);
         }
         if (selectedHorse == 0) {
             triangleR.x = player.r.x + player.r.w / 2 - triangleR.w / 2;
@@ -705,7 +751,7 @@ int main(int argc, char* argv[])
             triangleR.y = thirdHorse.r.y - triangleR.h + 20;
         }
         
-        UpdatePlayerPosition(triangleR, playerSprite, playerRotPoint, rotation, rotationDir, isPlaying);
+        UpdatePlayerPosition(triangleR, playerSprite, playerRotPoint, stableLevel);
         SDL_SetRenderDrawColor(renderer, 255, 255, 255, 0);
         SDL_RenderClear(renderer);
 
