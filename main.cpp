@@ -35,11 +35,10 @@
 #include "vendor/GLM/include/glm/gtc/matrix_transform.hpp"
 #include "vendor/GLM/include/glm/gtc/type_ptr.hpp"
 #else
-#include <filesystem>
-#include <pugixml.hpp>
-#include <glm/glm.hpp>
-#include <glm/gtc/matrix_transform.hpp>
-#include <glm/gtc/type_ptr.hpp>
+//#include <pugixml.hpp>
+//#include <glm/glm.hpp>
+//#include <glm/gtc/matrix_transform.hpp>
+//#include <glm/gtc/type_ptr.hpp>
 #ifdef __EMSCRIPTEN__
 namespace fs = std::__fs::filesystem;
 #else
@@ -66,11 +65,13 @@ using namespace std::chrono_literals;
 
 #define PLAYER_SPEED 0.1
 #define GAME_SPEED 0.4
+#define PLAYER_FRAME_MS 50
 
 int windowWidth = 240;
 int windowHeight = 320;
 SDL_Point mousePos;
 SDL_Point realMousePos;
+bool lastKeys[SDL_NUM_SCANCODES];
 bool keys[SDL_NUM_SCANCODES];
 bool buttons[SDL_BUTTON_X2 + 1];
 SDL_Window* window;
@@ -496,6 +497,7 @@ int main(int argc, char* argv[])
     SDL_LogSetAllPriority(SDL_LOG_PRIORITY_VERBOSE);
     SDL_LogSetOutputFunction(logOutputCallback, 0);
     SDL_Init(SDL_INIT_EVERYTHING);
+	Mix_OpenAudio(44100, AUDIO_S16, 2, 4096);
     TTF_Init();
     SDL_GetMouseState(&mousePos.x, &mousePos.y);
     window = SDL_CreateWindow("FarmRodeo", SDL_WINDOWPOS_CENTERED, SDL_WINDOWPOS_CENTERED, windowWidth, windowHeight, SDL_WINDOW_RESIZABLE);
@@ -551,13 +553,17 @@ int main(int argc, char* argv[])
     playerSprite.h = 20;
     bool isPlaying = true;
     int selectedHorse = 0;
+	Mix_Music *music = Mix_LoadMUS("res/music.ogg");
+	Mix_PlayMusic(music, -1);
     Clock globalClock;
     Clock playerAnimationClock;
     while (running) {
         float deltaTime = globalClock.restart();
         SDL_Event event;
+		std::copy(std::begin(keys), std::end(keys), std::begin(lastKeys));
         while (SDL_PollEvent(&event)) {
-            if (event.type == SDL_QUIT || event.type == SDL_KEYDOWN && event.key.keysym.scancode == SDL_SCANCODE_ESCAPE) {
+            if (event.type == SDL_QUIT ||
+				(event.type == SDL_KEYDOWN && event.key.keysym.scancode == SDL_SCANCODE_ESCAPE)) {
                 running = false;
                 // TODO: On mobile remember to use eventWatch function (it doesn't reach this code when terminating)
             }
@@ -566,14 +572,9 @@ int main(int argc, char* argv[])
             }
             if (event.type == SDL_KEYDOWN) {
                 keys[event.key.keysym.scancode] = true;
-                if (event.key.keysym.scancode == SDL_SCANCODE_SPACE) {
-                    if (isPlaying) {
-                        isPlaying = false;
-                    }
-                    else {
-                        isPlaying = true;
-                    }
-                }
+				if (event.key.keysym.scancode == SDL_SCANCODE_SPACE) {
+					isPlaying = !isPlaying;
+				}
                 if (!isPlaying) {
                     if (event.key.keysym.scancode == SDL_SCANCODE_W) {
                         ++selectedHorse;
@@ -607,18 +608,25 @@ int main(int argc, char* argv[])
                 realMousePos.y = event.motion.y;
             }
         }
-        if (isPlaying) {
-            player.dx = 0;
-            player.dy = 0;
-            if (keys[SDL_SCANCODE_A] || keys[SDL_SCANCODE_LEFT]) {
-                player.dx = -1;
-            }
-            else if (keys[SDL_SCANCODE_D] || keys[SDL_SCANCODE_RIGHT]) {
-                player.dx = 1;
-            }
-            if (selectedHorse==0) {
-            player.r.x += player.dx * deltaTime * PLAYER_SPEED;
-            player.r.y += player.dy * deltaTime * PLAYER_SPEED;
+		if (keys[SDL_SCANCODE_M] && !lastKeys[SDL_SCANCODE_M]) {
+			if (Mix_PausedMusic()) {
+				Mix_ResumeMusic();
+			} else {
+				Mix_PauseMusic();
+			}
+		}
+		if (isPlaying) {
+			player.dx = 0;
+			player.dy = 0;
+			if (keys[SDL_SCANCODE_A] || keys[SDL_SCANCODE_LEFT]) {
+				player.dx = -1;
+			}
+			else if (keys[SDL_SCANCODE_D] || keys[SDL_SCANCODE_RIGHT]) {
+				player.dx = 1;
+			}
+			if (selectedHorse==0) {
+				player.r.x += player.dx * deltaTime * PLAYER_SPEED;
+				player.r.y += player.dy * deltaTime * PLAYER_SPEED;
             }
             else if (selectedHorse == 1) {
                 secondHorse.r.x += player.dx * deltaTime * PLAYER_SPEED;
@@ -639,7 +647,7 @@ int main(int argc, char* argv[])
             if (bg2R.x + bg2R.w < 0) {
                 bg2R.x = bgR.x + bgR.w;
             }
-            if (playerAnimationClock.getElapsedTime() > 100) {
+            if (playerAnimationClock.getElapsedTime() > PLAYER_FRAME_MS) {
                 player.srcR.x += player.srcR.w;
                 if (player.srcR.x >= 410) {
                     player.srcR.x = 0;
@@ -671,6 +679,8 @@ int main(int argc, char* argv[])
         SDL_RenderCopyF(renderer, triangleT, 0, &triangleR);
         SDL_RenderPresent(renderer);
     }
+	Mix_FreeMusic(music);
+	Mix_CloseAudio();
     // TODO: On mobile remember to use eventWatch function (it doesn't reach this code when terminating)
     return 0;
 }
