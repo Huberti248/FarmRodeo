@@ -485,6 +485,11 @@ struct Entity {
     int dy = 0;
 };
 
+void UpdatePlayerPosition(const SDL_FRect triangleR, SDL_FRect& playerR) { 
+    playerR.x = triangleR.x + 5;
+    playerR.y = triangleR.y + 30;
+}
+
 int main(int argc, char* argv[])
 {
     std::srand(std::time(0));
@@ -506,6 +511,7 @@ int main(int argc, char* argv[])
     SDL_Texture* horse3T = IMG_LoadTexture(renderer, "res/horse3.png");
     SDL_Texture* bgT = IMG_LoadTexture(renderer, "res/bg.png");
     SDL_Texture* triangleT = IMG_LoadTexture(renderer, "res/triangle.png");
+    SDL_Texture* playerT = IMG_LoadTexture(renderer, "res/player.png");
     Entity player;
     player.r.w = 64;
     player.r.h = 64;
@@ -540,6 +546,9 @@ int main(int argc, char* argv[])
     triangleR.h = 32;
     triangleR.x = player.r.x + player.r.w / 2 - triangleR.w / 2;
     triangleR.y = player.r.y - triangleR.h;
+    SDL_FRect playerSprite;
+    playerSprite.w = 20;
+    playerSprite.h = 20;
     bool isPlaying = true;
     int selectedHorse = 0;
     Clock globalClock;
@@ -650,6 +659,7 @@ int main(int argc, char* argv[])
             triangleR.x = thirdHorse.r.x + thirdHorse.r.w / 2 - triangleR.w / 2;
             triangleR.y = thirdHorse.r.y - triangleR.h + 20;
         }
+        UpdatePlayerPosition(triangleR, playerSprite);
         SDL_SetRenderDrawColor(renderer, 255, 255, 255, 0);
         SDL_RenderClear(renderer);
         SDL_RenderCopyF(renderer, bgT, 0, &bgR);
@@ -657,6 +667,7 @@ int main(int argc, char* argv[])
         SDL_RenderCopyExF(renderer, horseT, &player.srcR, &player.r, 0, 0, SDL_FLIP_HORIZONTAL);
         SDL_RenderCopyExF(renderer, horse2T, &player.srcR, &secondHorse.r, 0, 0, SDL_FLIP_HORIZONTAL);
         SDL_RenderCopyExF(renderer, horse3T, &player.srcR, &thirdHorse.r, 0, 0, SDL_FLIP_HORIZONTAL);
+        SDL_RenderCopyExF(renderer, playerT, 0, &playerSprite, 0, 0, SDL_FLIP_HORIZONTAL);
         SDL_RenderCopyF(renderer, triangleT, 0, &triangleR);
         SDL_RenderPresent(renderer);
     }
