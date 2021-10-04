@@ -79,6 +79,7 @@ using namespace std::chrono_literals;
 #define GAMEOVER_NUM_OPTIONS 3
 #define FADE_TIME 500
 #define STABLE_MAX_MS 1500
+#define MUSIC_VOLUME 64 // 128 is max
 
 int windowWidth = 240;
 int windowHeight = 320;
@@ -795,6 +796,7 @@ int main(int argc, char* argv[])
     Mix_Music* musicMainIntro = Mix_LoadMUS("res/menu0.ogg");
     Mix_Music* musicMainLoop = Mix_LoadMUS("res/menu1.ogg");
 	Mix_Music* musicGameover = Mix_LoadMUS("res/gameover.xm");
+	Mix_VolumeMusic(MUSIC_VOLUME);
 	Mix_PlayMusic(musicMainIntro, 0);
     bool introPlayed = true;
     Text scoreText;
