@@ -794,7 +794,8 @@ int main(int argc, char* argv[])
 	Mix_Music* musicGame = Mix_LoadMUS("res/music.ogg");
     Mix_Music* musicMainIntro = Mix_LoadMUS("res/menu0.ogg");
     Mix_Music* musicMainLoop = Mix_LoadMUS("res/menu1.ogg");
-	Mix_PlayMusic(musicMainIntro, 1);
+	Mix_Music* musicGameover = Mix_LoadMUS("res/gameover.xm");
+	Mix_PlayMusic(musicMainIntro, 0);
     bool introPlayed = true;
     Text scoreText;
     float scoreCounter = 0;
@@ -1024,6 +1025,7 @@ int main(int argc, char* argv[])
                 if (stableLevel == 4) {
                     state = State::GameOver;
                     Mix_FadeOutMusic(FADE_TIME);
+					Mix_FadeInMusic(musicGameover, 1, FADE_TIME);
                 }
             }
             if (selectedHorse == 0) {
@@ -1073,6 +1075,9 @@ int main(int argc, char* argv[])
     }
 	Mix_FreeChunk(sndJump);
 	Mix_FreeMusic(musicGame);
+	Mix_FreeMusic(musicMainIntro);
+	Mix_FreeMusic(musicMainLoop);
+	Mix_FreeMusic(musicGameover);
 	Mix_CloseAudio();
     // TODO: On mobile remember to use eventWatch function (it doesn't reach this code when terminating)
     return 0;
