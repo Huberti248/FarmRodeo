@@ -71,6 +71,11 @@ using namespace std::chrono_literals;
 #define MAX_ROTATION_PLAYER 45
 #define MIN_ROTATION_PLAYER 0
 #define ROTATION_INCREMENT 0.05
+#define SCREEN_PADDING 20
+#define LETTER_WIDTH 20
+#define BUTTON_SELECTED {255,0,0}
+#define BUTTON_UNSELECTED {255,255,255}
+#define MAINMENU_NUM_OPTIONS 2
 
 int windowWidth = 240;
 int windowHeight = 320;
@@ -81,6 +86,13 @@ bool keys[SDL_NUM_SCANCODES];
 bool buttons[SDL_BUTTON_X2 + 1];
 SDL_Window* window;
 SDL_Renderer* renderer;
+TTF_Font* robotoF;
+
+enum class State {
+    Main,
+    Game,
+    GameOver
+};
 
 void logOutputCallback(void* userdata, int category, SDL_LogPriority priority, const char* message)
 {
@@ -496,6 +508,8 @@ struct StabilityLevel {
     float maxRotation;
 };
 
+
+
 void UpdatePlayerPosition(const SDL_FRect triangleR, SDL_FRect& playerR, SDL_FPoint& playerRotPoint, int stableLevel) { 
     playerR.x = triangleR.x + 5;
     playerR.y = triangleR.y + 30;
@@ -530,6 +544,114 @@ void UpdateScore(Text& scoreText, SDL_Renderer* renderer, TTF_Font* font, float 
     scoreText.dstR.x = windowWidth / 2.0f - scoreText.dstR.w / 2.0f;
 }
 
+enum class MenuOption {
+    Play = 1,
+    Resume,
+    Restart,
+    Controls,
+    Main,
+    Credits,
+    Quit
+};
+
+struct MenuButton {
+    MenuOption menuType;
+    Text buttonText;
+    std::string label;
+    bool selected;
+
+    void calculateButtonPosition(
+        const int index,
+        const int numButtons,
+        const float width,
+        const float height,
+        float paddingVertical)
+    {
+
+        buttonText.dstR.x = width / 2.0f - buttonText.dstR.w / 2.0f;
+        buttonText.dstR.y = height / 2.0f - numButtons * (buttonText.dstR.h / 2.0f + paddingVertical) + (index + 0.5f) * (buttonText.dstR.h + paddingVertical);
+    }
+};
+
+void HandleMenuOption(MenuOption option, State& gameState, bool& gameRunning)
+{
+    switch (option) {
+    case MenuOption::Play:
+        gameState = State::Game;
+        break;
+    case MenuOption::Credits:
+        //gameState = State::Credits;
+        break;
+    case MenuOption::Resume:
+        gameState = State::Game;
+        break;
+    case MenuOption::Controls:
+        //gameState = State::Controls;
+        break;
+    case MenuOption::Main:
+        gameState = State::Main;
+        break;
+    case MenuOption::Quit:
+        gameRunning = false;
+        break;
+    }
+}
+
+void MenuInit(SDL_FRect& container,
+    Text& titleText,
+    std::string titleString,
+    MenuButton options[],
+    const int numOptions,
+    const int buttonPadding,
+    const std::string labels[],
+    const MenuOption menuTypes[])
+{
+    // Setup background and title
+    container.w = windowWidth;
+    container.h = windowHeight;
+    container.x = windowWidth / 2.0f - container.w / 2.0f;
+    container.y = 0;
+
+    titleText.dstR.w = container.w - SCREEN_PADDING * 2;
+    titleText.dstR.h = 50;
+    titleText.dstR.x = windowWidth / 2.0f - titleText.dstR.w / 2.0f;
+    titleText.dstR.y = SCREEN_PADDING;
+    titleText.setText(renderer, robotoF, titleString, { 255, 0, 0 });
+
+    // Setup buttons
+    for (int i = 0; i < numOptions; ++i) {
+        options[i].label = labels[i];
+        options[i].menuType = menuTypes[i];
+        options[i].selected = false;
+        options[i].buttonText.dstR.w = strlen(options[i].label.c_str()) * LETTER_WIDTH;
+        options[i].buttonText.dstR.h = 50;
+        options[i].calculateButtonPosition(i, numOptions, windowWidth, windowHeight, buttonPadding);
+        options[i].buttonText.dstR.y += titleText.dstR.h;
+        options[i].buttonText.setText(renderer, robotoF, options[i].label, BUTTON_UNSELECTED);
+    }
+}
+
+void RenderMenu(SDL_FRect& container,
+    Text& titleText,
+    MenuButton options[],
+    const int numOptions)
+{
+    SDL_SetRenderDrawColor(renderer, 20, 20, 30, 200);
+    SDL_RenderFillRectF(renderer, &container);
+    titleText.draw(renderer);
+
+    for (int i = 0; i < numOptions; ++i) {
+        if (options[i].selected) {
+            options[i].buttonText.setText(renderer, robotoF, options[i].label, BUTTON_SELECTED);
+        }
+        else {
+            options[i].buttonText.setText(renderer, robotoF, options[i].label, BUTTON_UNSELECTED);
+        }
+
+        options[i].buttonText.draw(renderer);
+    }
+}
+
 int main(int argc, char* argv[])
 {
     std::srand(std::time(0));
@@ -541,7 +663,7 @@ int main(int argc, char* argv[])
     SDL_GetMouseState(&mousePos.x, &mousePos.y);
     window = SDL_CreateWindow("FarmRodeo", SDL_WINDOWPOS_CENTERED, SDL_WINDOWPOS_CENTERED, windowWidth, windowHeight, SDL_WINDOW_RESIZABLE);
     renderer = SDL_CreateRenderer(window, -1, SDL_RENDERER_ACCELERATED);
-    TTF_Font* robotoF = TTF_OpenFont("res/roboto.ttf", 72);
+    robotoF = TTF_OpenFont("res/roboto.ttf", 72);
     int w, h;
     SDL_GetWindowSize(window, &w, &h);
     SDL_RenderSetScale(renderer, w / (float)windowWidth, h / (float)windowHeight);
@@ -612,9 +734,22 @@ int main(int argc, char* argv[])
     };
     int stableLevel = 0;
     Clock stableCheck;
+    State state = State::Main;
+    MenuButton mainOptions[MAINMENU_NUM_OPTIONS];
+    const std::string mainLabels[MAINMENU_NUM_OPTIONS] = {
+        "Play",
+        "Exit"
+    };
+    const MenuOption mainMenuTypes[MAINMENU_NUM_OPTIONS] = {
+        MenuOption::Play,
+        MenuOption::Quit
+    };
+    Text mainTitleText;
+    SDL_FRect mainContainer;
 
     Clock globalClock;
     Clock playerAnimationClock;
+    MenuInit(mainContainer, mainTitleText, "Farm Rodeo", mainOptions, MAINMENU_NUM_OPTIONS, 10, mainLabels, mainMenuTypes);
     while (running) {
         float deltaTime = globalClock.restart();
         SDL_Event event;
@@ -629,31 +764,33 @@ int main(int argc, char* argv[])
                 SDL_RenderSetScale(renderer, event.window.data1 / (float)windowWidth, event.window.data2 / (float)windowHeight);
             }
             if (event.type == SDL_KEYDOWN) {
-                keys[event.key.keysym.scancode] = true;
-				if (event.key.keysym.scancode == SDL_SCANCODE_SPACE) {
-					isPlaying = !isPlaying;
-                    if (isPlaying) {
-                        if (currentHorse != selectedHorse) {
-                            stableLevel = 0;
-                            stableCheck.restart();
-                            rotation = 0.0f;
+                if (state == State::Game) {
+                    keys[event.key.keysym.scancode] = true;
+                    if (event.key.keysym.scancode == SDL_SCANCODE_SPACE) {
+                        isPlaying = !isPlaying;
+                        if (isPlaying) {
+                            if (currentHorse != selectedHorse) {
+                                stableLevel = 0;
+                                stableCheck.restart();
+                                rotation = 0.0f;
+                            }
+                        }
+                        else {
+                            currentHorse = selectedHorse;
                         }
                     }
-                    else {
-                        currentHorse = selectedHorse;
-                    }
-				}
-                if (!isPlaying) {
-                    if (event.key.keysym.scancode == SDL_SCANCODE_W) {
-                        ++selectedHorse;
-                        if (selectedHorse > 2) {
-                            selectedHorse = 0;
+                    if (!isPlaying) {
+                        if (event.key.keysym.scancode == SDL_SCANCODE_W) {
+                            ++selectedHorse;
+                            if (selectedHorse > 2) {
+                                selectedHorse = 0;
+                            }
                         }
-                    }
-                    if (event.key.keysym.scancode == SDL_SCANCODE_S) {
-                        --selectedHorse;
-                        if (selectedHorse < 0) {
-                            selectedHorse = 2;
+                        if (event.key.keysym.scancode == SDL_SCANCODE_S) {
+                            --selectedHorse;
+                            if (selectedHorse < 0) {
+                                selectedHorse = 2;
+                            }
                         }
                     }
                 }
@@ -663,6 +800,13 @@ int main(int argc, char* argv[])
             }
             if (event.type == SDL_MOUSEBUTTONDOWN) {
                 buttons[event.button.button] = true;
+                if (state == State::Main) {
+                    for (int i = 0; i < MAINMENU_NUM_OPTIONS; ++i) {
+                        if (SDL_PointInFRect(&mousePos, &mainOptions[i].buttonText.dstR)) {
+                            HandleMenuOption(mainOptions[i].menuType, state, running);
+                        }
+                    }
+                }
             }
             if (event.type == SDL_MOUSEBUTTONUP) {
                 buttons[event.button.button] = false;
@@ -674,95 +818,115 @@ int main(int argc, char* argv[])
                 mousePos.y = event.motion.y / scaleY;
                 realMousePos.x = event.motion.x;
                 realMousePos.y = event.motion.y;
-            }
-        }
-		if (keys[SDL_SCANCODE_M] && !lastKeys[SDL_SCANCODE_M]) {
-			if (Mix_PausedMusic()) {
-				Mix_ResumeMusic();
-			} else {
-				Mix_PauseMusic();
-			}
-		}
-		if (isPlaying) {
-			player.dx = 0;
-			player.dy = 0;
-			if (keys[SDL_SCANCODE_A] || keys[SDL_SCANCODE_LEFT]) {
-				player.dx = -1;
-			}
-			else if (keys[SDL_SCANCODE_D] || keys[SDL_SCANCODE_RIGHT]) {
-				player.dx = 1;
-			}
-			if (selectedHorse==0) {
-				player.r.x += player.dx * deltaTime * PLAYER_SPEED;
-				player.r.y += player.dy * deltaTime * PLAYER_SPEED;
-            }
-            else if (selectedHorse == 1) {
-                secondHorse.r.x += player.dx * deltaTime * PLAYER_SPEED;
-                secondHorse.r.y += player.dy * deltaTime * PLAYER_SPEED;
-            }
-            else if (selectedHorse == 2) {
-                thirdHorse.r.x += player.dx * deltaTime * PLAYER_SPEED;
-                thirdHorse.r.y += player.dy * deltaTime * PLAYER_SPEED;
-            }
-            player.r.x = clamp(player.r.x, 0, windowWidth - player.r.w);
-            secondHorse.r.x = clamp(secondHorse.r.x, 0, windowWidth - secondHorse.r.w);
-            thirdHorse.r.x = clamp(thirdHorse.r.x, 0, windowWidth - thirdHorse.r.w);
-            bgR.x += -deltaTime * GAME_SPEED;
-            bg2R.x += -deltaTime * GAME_SPEED;
-            if (bgR.x + bgR.w < 0) {
-                bgR.x = bg2R.x + bg2R.w;
-            }
-            if (bg2R.x + bg2R.w < 0) {
-                bg2R.x = bgR.x + bgR.w;
-            }
-            if (playerAnimationClock.getElapsedTime() > PLAYER_FRAME_MS) {
-                player.srcR.x += player.srcR.w;
-                if (player.srcR.x >= 410) {
-                    player.srcR.x = 0;
-                }
-                playerAnimationClock.restart();
-            }
 
-            scoreCounter += deltaTime / 1000;
-            UpdateScore(scoreText, renderer, robotoF, scoreCounter);
-
-            if (stableCheck.getElapsedTime() > 2000 && stableLevel <= 3) {
-                if (random(0, 100) < 40) {
-                    stableLevel++;
-                    if (stableLevel == 3) {
-                        printf("GameOver\n");
+                if (state == State::Main) {
+                    for (int i = 0; i < MAINMENU_NUM_OPTIONS; ++i) {
+                        if (SDL_PointInFRect(&mousePos, &mainOptions[i].buttonText.dstR)) {
+                            mainOptions[i].selected = true;
+                        }
+                        else {
+                            mainOptions[i].selected = false;
+                        }
                     }
                 }
-                printf("Level %d\n", stableLevel);
-                stableCheck.restart();
             }
-            UpdateStability(rotation, rotationDir, stableLevels, stableLevel);
         }
-        if (selectedHorse == 0) {
-            triangleR.x = player.r.x + player.r.w / 2 - triangleR.w / 2;
-            triangleR.y = player.r.y - triangleR.h + 20;
-        }
-        else if (selectedHorse == 1) {
-            triangleR.x = secondHorse.r.x + secondHorse.r.w / 2 - triangleR.w / 2;
-            triangleR.y = secondHorse.r.y - triangleR.h + 20;
-        }
-        else if (selectedHorse == 2) {
-            triangleR.x = thirdHorse.r.x + thirdHorse.r.w / 2 - triangleR.w / 2;
-            triangleR.y = thirdHorse.r.y - triangleR.h + 20;
+        if (state == State::Game) {
+            if (keys[SDL_SCANCODE_M] && !lastKeys[SDL_SCANCODE_M]) {
+                if (Mix_PausedMusic()) {
+                    Mix_ResumeMusic();
+                }
+                else {
+                    Mix_PauseMusic();
+                }
+            }
+            if (isPlaying) {
+                player.dx = 0;
+                player.dy = 0;
+                if (keys[SDL_SCANCODE_A] || keys[SDL_SCANCODE_LEFT]) {
+                    player.dx = -1;
+                }
+                else if (keys[SDL_SCANCODE_D] || keys[SDL_SCANCODE_RIGHT]) {
+                    player.dx = 1;
+                }
+                if (selectedHorse == 0) {
+                    player.r.x += player.dx * deltaTime * PLAYER_SPEED;
+                    player.r.y += player.dy * deltaTime * PLAYER_SPEED;
+                }
+                else if (selectedHorse == 1) {
+                    secondHorse.r.x += player.dx * deltaTime * PLAYER_SPEED;
+                    secondHorse.r.y += player.dy * deltaTime * PLAYER_SPEED;
+                }
+                else if (selectedHorse == 2) {
+                    thirdHorse.r.x += player.dx * deltaTime * PLAYER_SPEED;
+                    thirdHorse.r.y += player.dy * deltaTime * PLAYER_SPEED;
+                }
+                player.r.x = clamp(player.r.x, 0, windowWidth - player.r.w);
+                secondHorse.r.x = clamp(secondHorse.r.x, 0, windowWidth - secondHorse.r.w);
+                thirdHorse.r.x = clamp(thirdHorse.r.x, 0, windowWidth - thirdHorse.r.w);
+                bgR.x += -deltaTime * GAME_SPEED;
+                bg2R.x += -deltaTime * GAME_SPEED;
+                if (bgR.x + bgR.w < 0) {
+                    bgR.x = bg2R.x + bg2R.w;
+                }
+                if (bg2R.x + bg2R.w < 0) {
+                    bg2R.x = bgR.x + bgR.w;
+                }
+                if (playerAnimationClock.getElapsedTime() > PLAYER_FRAME_MS) {
+                    player.srcR.x += player.srcR.w;
+                    if (player.srcR.x >= 410) {
+                        player.srcR.x = 0;
+                    }
+                    playerAnimationClock.restart();
+                }
+
+                scoreCounter += deltaTime / 1000;
+                UpdateScore(scoreText, renderer, robotoF, scoreCounter);
+
+                if (stableCheck.getElapsedTime() > 2000 && stableLevel <= 3) {
+                    if (random(0, 100) < 40) {
+                        stableLevel++;
+                        if (stableLevel == 3) {
+                            printf("GameOver\n");
+                        }
+                    }
+                    printf("Level %d\n", stableLevel);
+                    stableCheck.restart();
+                }
+                UpdateStability(rotation, rotationDir, stableLevels, stableLevel);
+            }
+            if (selectedHorse == 0) {
+                triangleR.x = player.r.x + player.r.w / 2 - triangleR.w / 2;
+                triangleR.y = player.r.y - triangleR.h + 20;
+            }
+            else if (selectedHorse == 1) {
+                triangleR.x = secondHorse.r.x + secondHorse.r.w / 2 - triangleR.w / 2;
+                triangleR.y = secondHorse.r.y - triangleR.h + 20;
+            }
+            else if (selectedHorse == 2) {
+                triangleR.x = thirdHorse.r.x + thirdHorse.r.w / 2 - triangleR.w / 2;
+                triangleR.y = thirdHorse.r.y - triangleR.h + 20;
+            }
         }
         
-        UpdatePlayerPosition(triangleR, playerSprite, playerRotPoint, stableLevel);
         SDL_SetRenderDrawColor(renderer, 255, 255, 255, 0);
         SDL_RenderClear(renderer);
 
-        SDL_RenderCopyF(renderer, bgT, 0, &bgR);
-        SDL_RenderCopyExF(renderer, bgT, 0, &bg2R, 0, 0, SDL_FLIP_HORIZONTAL);
-        SDL_RenderCopyExF(renderer, horseT, &player.srcR, &player.r, 0, 0, SDL_FLIP_HORIZONTAL);
-        SDL_RenderCopyExF(renderer, horse2T, &player.srcR, &secondHorse.r, 0, 0, SDL_FLIP_HORIZONTAL);
-        SDL_RenderCopyExF(renderer, horse3T, &player.srcR, &thirdHorse.r, 0, 0, SDL_FLIP_HORIZONTAL);
-        SDL_RenderCopyExF(renderer, playerT, 0, &playerSprite, rotation, &playerRotPoint, SDL_FLIP_HORIZONTAL);
-        SDL_RenderCopyF(renderer, triangleT, 0, &triangleR);
-        scoreText.draw(renderer);
+        if (state == State::Main) {
+            RenderMenu(mainContainer, mainTitleText, mainOptions, MAINMENU_NUM_OPTIONS);
+        }
+        else if (state == State::Game) {
+            UpdatePlayerPosition(triangleR, playerSprite, playerRotPoint, stableLevel);
+
+            SDL_RenderCopyF(renderer, bgT, 0, &bgR);
+            SDL_RenderCopyExF(renderer, bgT, 0, &bg2R, 0, 0, SDL_FLIP_HORIZONTAL);
+            SDL_RenderCopyExF(renderer, horseT, &player.srcR, &player.r, 0, 0, SDL_FLIP_HORIZONTAL);
+            SDL_RenderCopyExF(renderer, horse2T, &player.srcR, &secondHorse.r, 0, 0, SDL_FLIP_HORIZONTAL);
+            SDL_RenderCopyExF(renderer, horse3T, &player.srcR, &thirdHorse.r, 0, 0, SDL_FLIP_HORIZONTAL);
+            SDL_RenderCopyExF(renderer, playerT, 0, &playerSprite, rotation, &playerRotPoint, SDL_FLIP_HORIZONTAL);
+            SDL_RenderCopyF(renderer, triangleT, 0, &triangleR);
+            scoreText.draw(renderer);
+        }
 
         SDL_RenderPresent(renderer);
     }
