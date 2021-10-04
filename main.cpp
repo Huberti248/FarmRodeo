@@ -35,11 +35,10 @@
 #include "vendor/GLM/include/glm/gtc/matrix_transform.hpp"
 #include "vendor/GLM/include/glm/gtc/type_ptr.hpp"
 #else
-#include <filesystem>
-#include <pugixml.hpp>
-#include <glm/glm.hpp>
-#include <glm/gtc/matrix_transform.hpp>
-#include <glm/gtc/type_ptr.hpp>
+//#include <pugixml.hpp>
+//#include <glm/glm.hpp>
+//#include <glm/gtc/matrix_transform.hpp>
+//#include <glm/gtc/type_ptr.hpp>
 #ifdef __EMSCRIPTEN__
 namespace fs = std::__fs::filesystem;
 #else
@@ -66,15 +65,37 @@ using namespace std::chrono_literals;
 
 #define PLAYER_SPEED 0.1
 #define GAME_SPEED 0.4
+#define PLAYER_FRAME_MS 50
+#define SCORE_MULTIPLIER 5
+
+#define MAX_ROTATION_PLAYER 45
+#define MIN_ROTATION_PLAYER 0
+#define ROTATION_INCREMENT 0.05
+#define SCREEN_PADDING 20
+#define LETTER_WIDTH 20
+#define BUTTON_SELECTED {255,0,0}
+#define BUTTON_UNSELECTED {255,255,255}
+#define MAINMENU_NUM_OPTIONS 2
+#define GAMEOVER_NUM_OPTIONS 3
+#define FADE_TIME 500
+#define STABLE_MAX_MS 1500
 
 int windowWidth = 240;
 int windowHeight = 320;
 SDL_Point mousePos;
 SDL_Point realMousePos;
+bool lastKeys[SDL_NUM_SCANCODES];
 bool keys[SDL_NUM_SCANCODES];
 bool buttons[SDL_BUTTON_X2 + 1];
 SDL_Window* window;
 SDL_Renderer* renderer;
+TTF_Font* robotoF;
+
+enum class State {
+    Main,
+    Game,
+    GameOver
+};
 
 void logOutputCallback(void* userdata, int category, SDL_LogPriority priority, const char* message)
 {
@@ -485,17 +506,236 @@ struct Entity {
     int dy = 0;
 };
 
+struct StabilityLevel {
+    float speed;
+    float maxRotation;
+};
+
+
+
+void UpdatePlayerPosition(const SDL_FRect triangleR, SDL_FRect& playerR, SDL_FPoint& playerRotPoint, int stableLevel) { 
+    playerR.x = triangleR.x + 5;
+    playerR.y = triangleR.y + 30;
+
+    if (stableLevel >= 3) {
+        playerRotPoint.x = playerR.x;
+        playerRotPoint.y = playerR.y;
+    }
+    else{
+        playerRotPoint.x = playerR.w - 5;
+        playerRotPoint.y = 15;
+    }
+}
+
+void UpdateStability(float& rotation, bool& rotationDir, const StabilityLevel levels[], int& levelIndex) {
+    StabilityLevel currentLevel = levels[levelIndex];
+
+    rotation += rotationDir ? currentLevel.speed : -currentLevel.speed;
+    if (levelIndex == 3) {
+        rotationDir = true;
+    }
+    if (rotation > currentLevel.maxRotation) {
+        if (levelIndex == 3) {
+            levelIndex = 4;
+        }
+        else {
+            rotationDir = false;
+        }
+    }
+    else if (rotation < 0.0f) {
+        rotationDir = true;
+    }
+}
+
+void UpdateScore(Text& scoreText, SDL_Renderer* renderer, TTF_Font* font, float scoreCounter) {
+    int score = scoreCounter * SCORE_MULTIPLIER;
+    scoreText.setText(renderer, font, "Score: " + std::to_string(score));
+    scoreText.dstR.w = 50 + 20.0f * std::to_string(score).length();
+    scoreText.dstR.x = windowWidth / 2.0f - scoreText.dstR.w / 2.0f;
+}
+
+enum class MenuOption {
+    Play = 1,
+    Resume,
+    Restart,
+    Controls,
+    Main,
+    Credits,
+    Quit
+};
+
+struct MenuButton {
+    MenuOption menuType;
+    Text buttonText;
+    std::string label;
+    bool selected;
+
+    void calculateButtonPosition(
+        const int index,
+        const int numButtons,
+        const float width,
+        const float height,
+        float paddingVertical)
+    {
+
+        buttonText.dstR.x = width / 2.0f - buttonText.dstR.w / 2.0f;
+        buttonText.dstR.y = height / 2.0f - numButtons * (buttonText.dstR.h / 2.0f + paddingVertical) + (index + 0.5f) * (buttonText.dstR.h + paddingVertical);
+    }
+};
+
+void HandleMenuOption(MenuOption option, State& gameState, bool& gameRunning)
+{
+    switch (option) {
+    case MenuOption::Play:
+        gameState = State::Game;
+        break;
+    case MenuOption::Credits:
+        //gameState = State::Credits;
+        break;
+    case MenuOption::Resume:
+        gameState = State::Game;
+        break;
+    case MenuOption::Controls:
+        //gameState = State::Controls;
+        break;
+    case MenuOption::Main:
+        gameState = State::Main;
+        break;
+    case MenuOption::Quit:
+        gameRunning = false;
+        break;
+    }
+}
+
+void MenuInit(SDL_FRect& container,
+    Text& titleText,
+    std::string titleString,
+    MenuButton options[],
+    const int numOptions,
+    const int buttonPadding,
+    const std::string labels[],
+    const MenuOption menuTypes[])
+{
+    // Setup background and title
+    container.w = windowWidth;
+    container.h = windowHeight;
+    container.x = windowWidth / 2.0f - container.w / 2.0f;
+    container.y = 0;
+
+    titleText.dstR.w = container.w - SCREEN_PADDING * 2;
+    titleText.dstR.h = 30;
+    titleText.dstR.x = windowWidth / 2.0f - titleText.dstR.w / 2.0f;
+    titleText.dstR.y = SCREEN_PADDING;
+    titleText.setText(renderer, robotoF, titleString, { 255, 0, 0 });
+
+    // Setup buttons
+    for (int i = 0; i < numOptions; ++i) {
+        options[i].label = labels[i];
+        options[i].menuType = menuTypes[i];
+        options[i].selected = false;
+        options[i].buttonText.dstR.w = strlen(options[i].label.c_str()) * LETTER_WIDTH;
+        options[i].buttonText.dstR.h = 25;
+        options[i].calculateButtonPosition(i, numOptions, windowWidth, windowHeight, buttonPadding);
+        options[i].buttonText.dstR.y += titleText.dstR.h;
+        options[i].buttonText.setText(renderer, robotoF, options[i].label, BUTTON_UNSELECTED);
+    }
+}
+
+void RenderMenu(SDL_FRect& container,
+    Text& titleText,
+    MenuButton options[],
+    const int numOptions)
+{
+    SDL_SetRenderDrawColor(renderer, 20, 20, 30, 200);
+    SDL_RenderFillRectF(renderer, &container);
+    titleText.draw(renderer);
+
+    for (int i = 0; i < numOptions; ++i) {
+        if (options[i].selected) {
+            options[i].buttonText.setText(renderer, robotoF, options[i].label, BUTTON_SELECTED);
+        }
+        else {
+            options[i].buttonText.setText(renderer, robotoF, options[i].label, BUTTON_UNSELECTED);
+        }
+
+        options[i].buttonText.draw(renderer);
+    }
+}
+
+void GameOverInit(SDL_FRect& container,
+    Text& titleText,
+    Text& scoreText,
+    MenuButton options[],
+    const int numOptions,
+    const int buttonPadding,
+    const std::string labels[],
+    const MenuOption menuTypes[])
+{
+    // Setup background and title
+    container.w = windowWidth;
+    container.h = windowHeight;
+    container.x = windowWidth / 2.0f - container.w / 2.0f;
+    container.y = 0;
+
+    titleText.dstR.w = container.w - SCREEN_PADDING * 2;
+    titleText.dstR.h = 30;
+    titleText.dstR.x = windowWidth / 2.0f - titleText.dstR.w / 2.0f;
+    titleText.dstR.y = SCREEN_PADDING;
+    titleText.setText(renderer, robotoF, "GAME OVER!", { 255, 0, 0 });
+
+    scoreText.dstR.w = container.w * 0.75f;
+    scoreText.dstR.h = 25;
+    scoreText.dstR.x = windowWidth / 2.0f - titleText.dstR.w / 2.0f;
+    scoreText.dstR.y = titleText.dstR.y + titleText.dstR.h + SCREEN_PADDING;
+
+    // Setup buttons
+    for (int i = 0; i < numOptions; ++i) {
+        options[i].label = labels[i];
+        options[i].menuType = menuTypes[i];
+        options[i].selected = false;
+        options[i].buttonText.dstR.w = strlen(options[i].label.c_str()) * LETTER_WIDTH;
+        options[i].buttonText.dstR.h = 25;
+        options[i].calculateButtonPosition(i, numOptions, windowWidth, windowHeight, buttonPadding);
+        options[i].buttonText.dstR.y += scoreText.dstR.h;
+        options[i].buttonText.setText(renderer, robotoF, options[i].label, BUTTON_UNSELECTED);
+    }
+}
+
+void RenderGameOver(SDL_FRect& container,
+    Text& titleText,
+    Text& scoreText,
+    MenuButton options[],
+    const int numOptions)
+{
+    SDL_SetRenderDrawColor(renderer, 20, 20, 30, 50);
+    SDL_RenderFillRectF(renderer, &container);
+    titleText.draw(renderer);
+    scoreText.draw(renderer);
+
+    for (int i = 0; i < numOptions; ++i) {
+        if (options[i].selected) {
+            options[i].buttonText.setText(renderer, robotoF, options[i].label, BUTTON_SELECTED);
+        }
+        else {
+            options[i].buttonText.setText(renderer, robotoF, options[i].label, BUTTON_UNSELECTED);
+        }
+
+        options[i].buttonText.draw(renderer);
+    }
+}
+
 int main(int argc, char* argv[])
 {
     std::srand(std::time(0));
     SDL_LogSetAllPriority(SDL_LOG_PRIORITY_VERBOSE);
     SDL_LogSetOutputFunction(logOutputCallback, 0);
     SDL_Init(SDL_INIT_EVERYTHING);
+	Mix_OpenAudio(44100, AUDIO_S16, 2, 4096);
     TTF_Init();
     SDL_GetMouseState(&mousePos.x, &mousePos.y);
     window = SDL_CreateWindow("FarmRodeo", SDL_WINDOWPOS_CENTERED, SDL_WINDOWPOS_CENTERED, windowWidth, windowHeight, SDL_WINDOW_RESIZABLE);
     renderer = SDL_CreateRenderer(window, -1, SDL_RENDERER_ACCELERATED);
-    TTF_Font* robotoF = TTF_OpenFont("res/roboto.ttf", 72);
+    robotoF = TTF_OpenFont("res/roboto.ttf", 72);
     int w, h;
     SDL_GetWindowSize(window, &w, &h);
     SDL_RenderSetScale(renderer, w / (float)windowWidth, h / (float)windowHeight);
@@ -506,6 +746,7 @@ int main(int argc, char* argv[])
     SDL_Texture* horse3T = IMG_LoadTexture(renderer, "res/horse3.png");
     SDL_Texture* bgT = IMG_LoadTexture(renderer, "res/bg.png");
     SDL_Texture* triangleT = IMG_LoadTexture(renderer, "res/triangle.png");
+    SDL_Texture* playerT = IMG_LoadTexture(renderer, "res/player.png");
     Entity player;
     player.r.w = 64;
     player.r.h = 64;
@@ -540,15 +781,80 @@ int main(int argc, char* argv[])
     triangleR.h = 32;
     triangleR.x = player.r.x + player.r.w / 2 - triangleR.w / 2;
     triangleR.y = player.r.y - triangleR.h;
+    SDL_FRect playerSprite;
+    playerSprite.w = 20;
+    playerSprite.h = 20;
+    SDL_FPoint playerRotPoint;
+    bool rotationDir = true;
+    float rotation = 0.0f;
     bool isPlaying = true;
     int selectedHorse = 0;
+    int currentHorse = selectedHorse;
+	Mix_Chunk* sndJump = Mix_LoadWAV("res/jump.wav");
+	Mix_Music* musicGame = Mix_LoadMUS("res/music.ogg");
+    Mix_Music* musicMainIntro = Mix_LoadMUS("res/menu0.ogg");
+    Mix_Music* musicMainLoop = Mix_LoadMUS("res/menu1.ogg");
+	Mix_PlayMusic(musicMainIntro, 1);
+    bool introPlayed = true;
+    Text scoreText;
+    float scoreCounter = 0;
+    scoreText.dstR.y = 5;
+    scoreText.dstR.h = 20;
+    UpdateScore(scoreText, renderer, robotoF, scoreCounter);
+    const StabilityLevel stableLevels[] =
+    {
+        {0.001f, 1.0f},
+        {0.03f, 20.0f},
+        {0.06f, 60.0f},
+        {0.075f, 100.0f}
+    };
+    int stableLevel = 0;
+    Clock stableCheck;
+
+    State state = State::Main;
+    MenuButton mainOptions[MAINMENU_NUM_OPTIONS];
+    const std::string mainLabels[MAINMENU_NUM_OPTIONS] = {
+        "Play",
+        "Exit"
+    };
+    const MenuOption mainMenuTypes[MAINMENU_NUM_OPTIONS] = {
+        MenuOption::Play,
+        MenuOption::Quit
+    };
+    Text mainTitleText;
+    SDL_FRect mainContainer;
+    MenuInit(mainContainer, mainTitleText, "Farm Rodeo", mainOptions, MAINMENU_NUM_OPTIONS, 10, mainLabels, mainMenuTypes);
+
+    MenuButton gOverOptions[GAMEOVER_NUM_OPTIONS];
+    const std::string gOverLabels[GAMEOVER_NUM_OPTIONS] = {
+        "Play Again",
+        "Main Menu",
+        "Exit"
+    };
+    const MenuOption gOverTypes[GAMEOVER_NUM_OPTIONS] = {
+        MenuOption::Play,
+        MenuOption::Main,
+        MenuOption::Quit
+    };
+    Text gOverTitleText;
+    Text gOverScoreText;
+    SDL_FRect gOverContainer;
+    GameOverInit(gOverContainer, gOverTitleText, gOverScoreText, gOverOptions, GAMEOVER_NUM_OPTIONS, 10, gOverLabels, gOverTypes);
+
     Clock globalClock;
     Clock playerAnimationClock;
+
     while (running) {
+        if (!Mix_PlayingMusic() && state == State::Main && introPlayed) {
+            introPlayed = false;
+            Mix_PlayMusic(musicMainLoop, -1);
+        };
         float deltaTime = globalClock.restart();
         SDL_Event event;
+		std::copy(std::begin(keys), std::end(keys), std::begin(lastKeys));
         while (SDL_PollEvent(&event)) {
-            if (event.type == SDL_QUIT || event.type == SDL_KEYDOWN && event.key.keysym.scancode == SDL_SCANCODE_ESCAPE) {
+            if (event.type == SDL_QUIT ||
+				(event.type == SDL_KEYDOWN && event.key.keysym.scancode == SDL_SCANCODE_ESCAPE)) {
                 running = false;
                 // TODO: On mobile remember to use eventWatch function (it doesn't reach this code when terminating)
             }
@@ -556,26 +862,35 @@ int main(int argc, char* argv[])
                 SDL_RenderSetScale(renderer, event.window.data1 / (float)windowWidth, event.window.data2 / (float)windowHeight);
             }
             if (event.type == SDL_KEYDOWN) {
-                keys[event.key.keysym.scancode] = true;
-                if (event.key.keysym.scancode == SDL_SCANCODE_SPACE) {
-                    if (isPlaying) {
-                        isPlaying = false;
-                    }
-                    else {
-                        isPlaying = true;
-                    }
-                }
-                if (!isPlaying) {
-                    if (event.key.keysym.scancode == SDL_SCANCODE_W) {
-                        ++selectedHorse;
-                        if (selectedHorse > 2) {
-                            selectedHorse = 0;
+                if (state == State::Game) {
+                    keys[event.key.keysym.scancode] = true;
+                    if (event.key.keysym.scancode == SDL_SCANCODE_SPACE) {
+                        isPlaying = !isPlaying;
+                        if (isPlaying) {
+                            if (currentHorse != selectedHorse) {
+                                stableLevel = 0;
+                                stableCheck.restart();
+                                rotation = 0.0f;
+                            }
+                        }
+                        else {
+                            currentHorse = selectedHorse;
                         }
                     }
-                    if (event.key.keysym.scancode == SDL_SCANCODE_S) {
-                        --selectedHorse;
-                        if (selectedHorse < 0) {
-                            selectedHorse = 2;
+                    if (!isPlaying) {
+                        if (event.key.keysym.scancode == SDL_SCANCODE_W) {
+                            ++selectedHorse;
+                            Mix_PlayChannel(-1, sndJump, 0);
+                            if (selectedHorse > 2) {
+                                selectedHorse = 0;
+                            }
+                        }
+                        if (event.key.keysym.scancode == SDL_SCANCODE_S) {
+                            --selectedHorse;
+                            Mix_PlayChannel(-1, sndJump, 0);
+                            if (selectedHorse < 0) {
+                                selectedHorse = 2;
+                            }
                         }
                     }
                 }
@@ -585,6 +900,34 @@ int main(int argc, char* argv[])
             }
             if (event.type == SDL_MOUSEBUTTONDOWN) {
                 buttons[event.button.button] = true;
+                bool buttonUse = false;
+                if (state == State::Main) {
+                    for (int i = 0; i < MAINMENU_NUM_OPTIONS; ++i) {
+                        if (SDL_PointInFRect(&mousePos, &mainOptions[i].buttonText.dstR)) {
+                            HandleMenuOption(mainOptions[i].menuType, state, running);
+                            buttonUse = true;
+                        }
+                    }
+                }
+                else if (state == State::GameOver) {
+                    for (int i = 0; i < GAMEOVER_NUM_OPTIONS; ++i) {
+                        if (SDL_PointInFRect(&mousePos, &gOverOptions[i].buttonText.dstR)) {
+                            HandleMenuOption(gOverOptions[i].menuType, state, running);
+                            buttonUse = true;
+                        }
+                    }
+                }
+                if (buttonUse) {
+                    if (state == State::Game) {
+                        Mix_FadeOutMusic(FADE_TIME);
+                        Mix_FadeInMusic(musicGame, -1, FADE_TIME);
+                    }
+                    else if (state == State::Main) {
+                        Mix_FadeOutMusic(FADE_TIME);
+                        Mix_FadeInMusic(musicMainIntro, 1, FADE_TIME);
+                    }
+                }
+
             }
             if (event.type == SDL_MOUSEBUTTONUP) {
                 buttons[event.button.button] = false;
@@ -596,70 +939,141 @@ int main(int argc, char* argv[])
                 mousePos.y = event.motion.y / scaleY;
                 realMousePos.x = event.motion.x;
                 realMousePos.y = event.motion.y;
+
+                if (state == State::Main) {
+                    for (int i = 0; i < MAINMENU_NUM_OPTIONS; ++i) {
+                        if (SDL_PointInFRect(&mousePos, &mainOptions[i].buttonText.dstR)) {
+                            mainOptions[i].selected = true;
+                        }
+                        else {
+                            mainOptions[i].selected = false;
+                        }
+                    }
+                }
+                else if (state == State::GameOver) {
+                    for (int i = 0; i < GAMEOVER_NUM_OPTIONS; ++i) {
+                        if (SDL_PointInFRect(&mousePos, &gOverOptions[i].buttonText.dstR)) {
+                            gOverOptions[i].selected = true;
+                        }
+                        else {
+                            gOverOptions[i].selected = false;
+                        }
+                    }
+                }
             }
         }
-        if (isPlaying) {
-            player.dx = 0;
-            player.dy = 0;
-            if (keys[SDL_SCANCODE_A] || keys[SDL_SCANCODE_LEFT]) {
-                player.dx = -1;
+        if (state == State::Game) {
+            if (keys[SDL_SCANCODE_M] && !lastKeys[SDL_SCANCODE_M]) {
+                if (Mix_PausedMusic()) {
+                    Mix_ResumeMusic();
+                }
+                else {
+                    Mix_PauseMusic();
+                }
             }
-            else if (keys[SDL_SCANCODE_D] || keys[SDL_SCANCODE_RIGHT]) {
-                player.dx = 1;
+            if (isPlaying) {
+                player.dx = 0;
+                player.dy = 0;
+                if (keys[SDL_SCANCODE_A] || keys[SDL_SCANCODE_LEFT]) {
+                    player.dx = -1;
+                }
+                else if (keys[SDL_SCANCODE_D] || keys[SDL_SCANCODE_RIGHT]) {
+                    player.dx = 1;
+                }
+                if (selectedHorse == 0) {
+                    player.r.x += player.dx * deltaTime * PLAYER_SPEED;
+                    player.r.y += player.dy * deltaTime * PLAYER_SPEED;
+                }
+                else if (selectedHorse == 1) {
+                    secondHorse.r.x += player.dx * deltaTime * PLAYER_SPEED;
+                    secondHorse.r.y += player.dy * deltaTime * PLAYER_SPEED;
+                }
+                else if (selectedHorse == 2) {
+                    thirdHorse.r.x += player.dx * deltaTime * PLAYER_SPEED;
+                    thirdHorse.r.y += player.dy * deltaTime * PLAYER_SPEED;
+                }
+                player.r.x = clamp(player.r.x, 0, windowWidth - player.r.w);
+                secondHorse.r.x = clamp(secondHorse.r.x, 0, windowWidth - secondHorse.r.w);
+                thirdHorse.r.x = clamp(thirdHorse.r.x, 0, windowWidth - thirdHorse.r.w);
+                bgR.x += -deltaTime * GAME_SPEED;
+                bg2R.x += -deltaTime * GAME_SPEED;
+                if (bgR.x + bgR.w < 0) {
+                    bgR.x = bg2R.x + bg2R.w;
+                }
+                if (bg2R.x + bg2R.w < 0) {
+                    bg2R.x = bgR.x + bgR.w;
+                }
+                if (playerAnimationClock.getElapsedTime() > PLAYER_FRAME_MS) {
+                    player.srcR.x += player.srcR.w;
+                    if (player.srcR.x >= 410) {
+                        player.srcR.x = 0;
+                    }
+                    playerAnimationClock.restart();
+                }
+
+                scoreCounter += deltaTime / 1000;
+                UpdateScore(scoreText, renderer, robotoF, scoreCounter);
+
+                if (stableCheck.getElapsedTime() > STABLE_MAX_MS && stableLevel < 3) {
+                    if (random(0, 100) < 40) {
+                        stableLevel++;
+                    }
+                    stableCheck.restart();
+                }
+                UpdateStability(rotation, rotationDir, stableLevels, stableLevel);
+                if (stableLevel == 4) {
+                    state = State::GameOver;
+                    Mix_FadeOutMusic(FADE_TIME);
+                }
             }
-            if (selectedHorse==0) {
-            player.r.x += player.dx * deltaTime * PLAYER_SPEED;
-            player.r.y += player.dy * deltaTime * PLAYER_SPEED;
+            if (selectedHorse == 0) {
+                triangleR.x = player.r.x + player.r.w / 2 - triangleR.w / 2;
+                triangleR.y = player.r.y - triangleR.h + 20;
             }
             else if (selectedHorse == 1) {
-                secondHorse.r.x += player.dx * deltaTime * PLAYER_SPEED;
-                secondHorse.r.y += player.dy * deltaTime * PLAYER_SPEED;
+                triangleR.x = secondHorse.r.x + secondHorse.r.w / 2 - triangleR.w / 2;
+                triangleR.y = secondHorse.r.y - triangleR.h + 20;
             }
             else if (selectedHorse == 2) {
-                thirdHorse.r.x += player.dx * deltaTime * PLAYER_SPEED;
-                thirdHorse.r.y += player.dy * deltaTime * PLAYER_SPEED;
-            }
-            player.r.x = clamp(player.r.x, 0, windowWidth - player.r.w);
-            secondHorse.r.x = clamp(secondHorse.r.x, 0, windowWidth - secondHorse.r.w);
-            thirdHorse.r.x = clamp(thirdHorse.r.x, 0, windowWidth - thirdHorse.r.w);
-            bgR.x += -deltaTime * GAME_SPEED;
-            bg2R.x += -deltaTime * GAME_SPEED;
-            if (bgR.x + bgR.w < 0) {
-                bgR.x = bg2R.x + bg2R.w;
-            }
-            if (bg2R.x + bg2R.w < 0) {
-                bg2R.x = bgR.x + bgR.w;
-            }
-            if (playerAnimationClock.getElapsedTime() > 100) {
-                player.srcR.x += player.srcR.w;
-                if (player.srcR.x >= 410) {
-                    player.srcR.x = 0;
-                }
-                playerAnimationClock.restart();
+                triangleR.x = thirdHorse.r.x + thirdHorse.r.w / 2 - triangleR.w / 2;
+                triangleR.y = thirdHorse.r.y - triangleR.h + 20;
             }
         }
-        if (selectedHorse == 0) {
-            triangleR.x = player.r.x + player.r.w / 2 - triangleR.w / 2;
-            triangleR.y = player.r.y - triangleR.h + 20;
-        }
-        else if (selectedHorse == 1) {
-            triangleR.x = secondHorse.r.x + secondHorse.r.w / 2 - triangleR.w / 2;
-            triangleR.y = secondHorse.r.y - triangleR.h + 20;
-        }
-        else if (selectedHorse == 2) {
-            triangleR.x = thirdHorse.r.x + thirdHorse.r.w / 2 - triangleR.w / 2;
-            triangleR.y = thirdHorse.r.y - triangleR.h + 20;
-        }
+        
         SDL_SetRenderDrawColor(renderer, 255, 255, 255, 0);
         SDL_RenderClear(renderer);
-        SDL_RenderCopyF(renderer, bgT, 0, &bgR);
-        SDL_RenderCopyExF(renderer, bgT, 0, &bg2R, 0, 0, SDL_FLIP_HORIZONTAL);
-        SDL_RenderCopyExF(renderer, horseT, &player.srcR, &player.r, 0, 0, SDL_FLIP_HORIZONTAL);
-        SDL_RenderCopyExF(renderer, horse2T, &player.srcR, &secondHorse.r, 0, 0, SDL_FLIP_HORIZONTAL);
-        SDL_RenderCopyExF(renderer, horse3T, &player.srcR, &thirdHorse.r, 0, 0, SDL_FLIP_HORIZONTAL);
-        SDL_RenderCopyF(renderer, triangleT, 0, &triangleR);
+
+        if (state == State::Main) {
+            RenderMenu(mainContainer, mainTitleText, mainOptions, MAINMENU_NUM_OPTIONS);
+        }
+        else if (state == State::GameOver) {
+            gOverScoreText.setText(renderer, robotoF, scoreText.text, { 0, 191, 255 });
+            RenderGameOver(gOverContainer, gOverTitleText, gOverScoreText, gOverOptions, GAMEOVER_NUM_OPTIONS);
+
+            scoreCounter = 0.0f;
+            stableCheck.restart();
+            stableLevel = 0;
+            rotation = 0.0f;
+            selectedHorse = 0;
+        }
+        else if (state == State::Game) {
+            UpdatePlayerPosition(triangleR, playerSprite, playerRotPoint, stableLevel);
+
+            SDL_RenderCopyF(renderer, bgT, 0, &bgR);
+            SDL_RenderCopyExF(renderer, bgT, 0, &bg2R, 0, 0, SDL_FLIP_HORIZONTAL);
+            SDL_RenderCopyExF(renderer, horseT, &player.srcR, &player.r, 0, 0, SDL_FLIP_HORIZONTAL);
+            SDL_RenderCopyExF(renderer, horse2T, &player.srcR, &secondHorse.r, 0, 0, SDL_FLIP_HORIZONTAL);
+            SDL_RenderCopyExF(renderer, horse3T, &player.srcR, &thirdHorse.r, 0, 0, SDL_FLIP_HORIZONTAL);
+            SDL_RenderCopyExF(renderer, playerT, 0, &playerSprite, rotation, &playerRotPoint, SDL_FLIP_HORIZONTAL);
+            SDL_RenderCopyF(renderer, triangleT, 0, &triangleR);
+            scoreText.draw(renderer);
+        }
+
         SDL_RenderPresent(renderer);
     }
+	Mix_FreeChunk(sndJump);
+	Mix_FreeMusic(musicGame);
+	Mix_CloseAudio();
     // TODO: On mobile remember to use eventWatch function (it doesn't reach this code when terminating)
     return 0;
 }
