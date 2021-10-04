@@ -76,6 +76,7 @@ using namespace std::chrono_literals;
 #define BUTTON_SELECTED {255,0,0}
 #define BUTTON_UNSELECTED {255,255,255}
 #define MAINMENU_NUM_OPTIONS 2
+#define FADE_TIME 1200
 
 int windowWidth = 240;
 int windowHeight = 320;
@@ -624,7 +625,7 @@ void MenuInit(SDL_FRect& container,
         options[i].menuType = menuTypes[i];
         options[i].selected = false;
         options[i].buttonText.dstR.w = strlen(options[i].label.c_str()) * LETTER_WIDTH;
-        options[i].buttonText.dstR.h = 50;
+        options[i].buttonText.dstR.h = 25;
         options[i].calculateButtonPosition(i, numOptions, windowWidth, windowHeight, buttonPadding);
         options[i].buttonText.dstR.y += titleText.dstR.h;
         options[i].buttonText.setText(renderer, robotoF, options[i].label, BUTTON_UNSELECTED);
@@ -718,8 +719,12 @@ int main(int argc, char* argv[])
     bool isPlaying = true;
     int selectedHorse = 0;
     int currentHorse = selectedHorse;
-	Mix_Music *music = Mix_LoadMUS("res/music.ogg");
-	Mix_PlayMusic(music, -1);
+	Mix_Chunk* sndJump = Mix_LoadWAV("res/jump.wav");
+	Mix_Music* musicGame = Mix_LoadMUS("res/music.ogg");
+    Mix_Music* musicMainIntro = Mix_LoadMUS("res/menu0.ogg");
+    Mix_Music* musicMainLoop = Mix_LoadMUS("res/menu1.ogg");
+	Mix_PlayMusic(musicMainIntro, 1);
+    bool introPlayed = true;
     Text scoreText;
     float scoreCounter = 0;
     scoreText.dstR.y = 5;
@@ -751,6 +756,10 @@ int main(int argc, char* argv[])
     Clock playerAnimationClock;
     MenuInit(mainContainer, mainTitleText, "Farm Rodeo", mainOptions, MAINMENU_NUM_OPTIONS, 10, mainLabels, mainMenuTypes);
     while (running) {
+        if (!Mix_PlayingMusic() && state == State::Main && introPlayed) {
+            introPlayed = false;
+            Mix_PlayMusic(musicMainLoop, -1);
+        };
         float deltaTime = globalClock.restart();
         SDL_Event event;
 		std::copy(std::begin(keys), std::end(keys), std::begin(lastKeys));
@@ -782,12 +791,14 @@ int main(int argc, char* argv[])
                     if (!isPlaying) {
                         if (event.key.keysym.scancode == SDL_SCANCODE_W) {
                             ++selectedHorse;
+                            Mix_PlayChannel(-1, sndJump, 0);
                             if (selectedHorse > 2) {
                                 selectedHorse = 0;
                             }
                         }
                         if (event.key.keysym.scancode == SDL_SCANCODE_S) {
                             --selectedHorse;
+                            Mix_PlayChannel(-1, sndJump, 0);
                             if (selectedHorse < 0) {
                                 selectedHorse = 2;
                             }
@@ -804,6 +815,10 @@ int main(int argc, char* argv[])
                     for (int i = 0; i < MAINMENU_NUM_OPTIONS; ++i) {
                         if (SDL_PointInFRect(&mousePos, &mainOptions[i].buttonText.dstR)) {
                             HandleMenuOption(mainOptions[i].menuType, state, running);
+                            if (state == State::Game) {
+                                Mix_FadeOutMusic(FADE_TIME);
+                                Mix_FadeInMusic(musicGame, -1, FADE_TIME);
+                            }
                         }
                     }
                 }
@@ -890,7 +905,6 @@ int main(int argc, char* argv[])
                             printf("GameOver\n");
                         }
                     }
-                    printf("Level %d\n", stableLevel);
                     stableCheck.restart();
                 }
                 UpdateStability(rotation, rotationDir, stableLevels, stableLevel);
@@ -930,7 +944,8 @@ int main(int argc, char* argv[])
 
         SDL_RenderPresent(renderer);
     }
-	Mix_FreeMusic(music);
+	Mix_FreeChunk(sndJump);
+	Mix_FreeMusic(musicGame);
 	Mix_CloseAudio();
     // TODO: On mobile remember to use eventWatch function (it doesn't reach this code when terminating)
     return 0;
