@@ -76,7 +76,9 @@ using namespace std::chrono_literals;
 #define BUTTON_SELECTED {255,0,0}
 #define BUTTON_UNSELECTED {255,255,255}
 #define MAINMENU_NUM_OPTIONS 2
-#define FADE_TIME 1200
+#define GAMEOVER_NUM_OPTIONS 3
+#define FADE_TIME 500
+#define STABLE_MAX_MS 1500
 
 int windowWidth = 240;
 int windowHeight = 320;
@@ -525,13 +527,20 @@ void UpdatePlayerPosition(const SDL_FRect triangleR, SDL_FRect& playerR, SDL_FPo
     }
 }
 
-void UpdateStability(float& rotation, bool& rotationDir, const StabilityLevel levels[], int levelIndex) {
-    int index = levelIndex > 3 ? 3 : levelIndex;
-    StabilityLevel currentLevel = levels[index];
+void UpdateStability(float& rotation, bool& rotationDir, const StabilityLevel levels[], int& levelIndex) {
+    StabilityLevel currentLevel = levels[levelIndex];
 
     rotation += rotationDir ? currentLevel.speed : -currentLevel.speed;
+    if (levelIndex == 3) {
+        rotationDir = true;
+    }
     if (rotation > currentLevel.maxRotation) {
-        rotationDir = false;
+        if (levelIndex == 3) {
+            levelIndex = 4;
+        }
+        else {
+            rotationDir = false;
+        }
     }
     else if (rotation < 0.0f) {
         rotationDir = true;
@@ -653,6 +662,68 @@ void RenderMenu(SDL_FRect& container,
     }
 }
 
+void GameOverInit(SDL_FRect& container,
+    Text& titleText,
+    Text& scoreText,
+    MenuButton options[],
+    const int numOptions,
+    const int buttonPadding,
+    const std::string labels[],
+    const MenuOption menuTypes[])
+{
+    // Setup background and title
+    container.w = windowWidth;
+    container.h = windowHeight;
+    container.x = windowWidth / 2.0f - container.w / 2.0f;
+    container.y = 0;
+
+    titleText.dstR.w = container.w - SCREEN_PADDING * 2;
+    titleText.dstR.h = 30;
+    titleText.dstR.x = windowWidth / 2.0f - titleText.dstR.w / 2.0f;
+    titleText.dstR.y = SCREEN_PADDING;
+    titleText.setText(renderer, robotoF, "GAME OVER!", { 255, 0, 0 });
+
+    scoreText.dstR.w = container.w * 0.75f;
+    scoreText.dstR.h = 25;
+    scoreText.dstR.x = windowWidth / 2.0f - titleText.dstR.w / 2.0f;
+    scoreText.dstR.y = titleText.dstR.y + titleText.dstR.h + SCREEN_PADDING;
+
+    // Setup buttons
+    for (int i = 0; i < numOptions; ++i) {
+        options[i].label = labels[i];
+        options[i].menuType = menuTypes[i];
+        options[i].selected = false;
+        options[i].buttonText.dstR.w = strlen(options[i].label.c_str()) * LETTER_WIDTH;
+        options[i].buttonText.dstR.h = 25;
+        options[i].calculateButtonPosition(i, numOptions, windowWidth, windowHeight, buttonPadding);
+        options[i].buttonText.dstR.y += scoreText.dstR.h;
+        options[i].buttonText.setText(renderer, robotoF, options[i].label, BUTTON_UNSELECTED);
+    }
+}
+
+void RenderGameOver(SDL_FRect& container,
+    Text& titleText,
+    Text& scoreText,
+    MenuButton options[],
+    const int numOptions)
+{
+    SDL_SetRenderDrawColor(renderer, 20, 20, 30, 50);
+    SDL_RenderFillRectF(renderer, &container);
+    titleText.draw(renderer);
+    scoreText.draw(renderer);
+
+    for (int i = 0; i < numOptions; ++i) {
+        if (options[i].selected) {
+            options[i].buttonText.setText(renderer, robotoF, options[i].label, BUTTON_SELECTED);
+        }
+        else {
+            options[i].buttonText.setText(renderer, robotoF, options[i].label, BUTTON_UNSELECTED);
+        }
+
+        options[i].buttonText.draw(renderer);
+    }
+}
+
 int main(int argc, char* argv[])
 {
     std::srand(std::time(0));
@@ -739,6 +810,7 @@ int main(int argc, char* argv[])
     };
     int stableLevel = 0;
     Clock stableCheck;
+
     State state = State::Main;
     MenuButton mainOptions[MAINMENU_NUM_OPTIONS];
     const std::string mainLabels[MAINMENU_NUM_OPTIONS] = {
@@ -751,10 +823,27 @@ int main(int argc, char* argv[])
     };
     Text mainTitleText;
     SDL_FRect mainContainer;
+    MenuInit(mainContainer, mainTitleText, "Farm Rodeo", mainOptions, MAINMENU_NUM_OPTIONS, 10, mainLabels, mainMenuTypes);
+
+    MenuButton gOverOptions[GAMEOVER_NUM_OPTIONS];
+    const std::string gOverLabels[GAMEOVER_NUM_OPTIONS] = {
+        "Play Again",
+        "Main Menu",
+        "Exit"
+    };
+    const MenuOption gOverTypes[GAMEOVER_NUM_OPTIONS] = {
+        MenuOption::Play,
+        MenuOption::Main,
+        MenuOption::Quit
+    };
+    Text gOverTitleText;
+    Text gOverScoreText;
+    SDL_FRect gOverContainer;
+    GameOverInit(gOverContainer, gOverTitleText, gOverScoreText, gOverOptions, GAMEOVER_NUM_OPTIONS, 10, gOverLabels, gOverTypes);
 
     Clock globalClock;
     Clock playerAnimationClock;
-    MenuInit(mainContainer, mainTitleText, "Farm Rodeo", mainOptions, MAINMENU_NUM_OPTIONS, 10, mainLabels, mainMenuTypes);
+
     while (running) {
         if (!Mix_PlayingMusic() && state == State::Main && introPlayed) {
             introPlayed = false;
@@ -811,17 +900,34 @@ int main(int argc, char* argv[])
             }
             if (event.type == SDL_MOUSEBUTTONDOWN) {
                 buttons[event.button.button] = true;
+                bool buttonUse = false;
                 if (state == State::Main) {
                     for (int i = 0; i < MAINMENU_NUM_OPTIONS; ++i) {
                         if (SDL_PointInFRect(&mousePos, &mainOptions[i].buttonText.dstR)) {
                             HandleMenuOption(mainOptions[i].menuType, state, running);
-                            if (state == State::Game) {
-                                Mix_FadeOutMusic(FADE_TIME);
-                                Mix_FadeInMusic(musicGame, -1, FADE_TIME);
-                            }
+                            buttonUse = true;
                         }
                     }
                 }
+                else if (state == State::GameOver) {
+                    for (int i = 0; i < GAMEOVER_NUM_OPTIONS; ++i) {
+                        if (SDL_PointInFRect(&mousePos, &gOverOptions[i].buttonText.dstR)) {
+                            HandleMenuOption(gOverOptions[i].menuType, state, running);
+                            buttonUse = true;
+                        }
+                    }
+                }
+                if (buttonUse) {
+                    if (state == State::Game) {
+                        Mix_FadeOutMusic(FADE_TIME);
+                        Mix_FadeInMusic(musicGame, -1, FADE_TIME);
+                    }
+                    else if (state == State::Main) {
+                        Mix_FadeOutMusic(FADE_TIME);
+                        Mix_FadeInMusic(musicMainIntro, 1, FADE_TIME);
+                    }
+                }
+
             }
             if (event.type == SDL_MOUSEBUTTONUP) {
                 buttons[event.button.button] = false;
@@ -841,6 +947,16 @@ int main(int argc, char* argv[])
                         }
                         else {
                             mainOptions[i].selected = false;
+                        }
+                    }
+                }
+                else if (state == State::GameOver) {
+                    for (int i = 0; i < GAMEOVER_NUM_OPTIONS; ++i) {
+                        if (SDL_PointInFRect(&mousePos, &gOverOptions[i].buttonText.dstR)) {
+                            gOverOptions[i].selected = true;
+                        }
+                        else {
+                            gOverOptions[i].selected = false;
                         }
                     }
                 }
@@ -898,16 +1014,17 @@ int main(int argc, char* argv[])
                 scoreCounter += deltaTime / 1000;
                 UpdateScore(scoreText, renderer, robotoF, scoreCounter);
 
-                if (stableCheck.getElapsedTime() > 2000 && stableLevel <= 3) {
+                if (stableCheck.getElapsedTime() > STABLE_MAX_MS && stableLevel < 3) {
                     if (random(0, 100) < 40) {
                         stableLevel++;
-                        if (stableLevel == 3) {
-                            printf("GameOver\n");
-                        }
                     }
                     stableCheck.restart();
                 }
                 UpdateStability(rotation, rotationDir, stableLevels, stableLevel);
+                if (stableLevel == 4) {
+                    state = State::GameOver;
+                    Mix_FadeOutMusic(FADE_TIME);
+                }
             }
             if (selectedHorse == 0) {
                 triangleR.x = player.r.x + player.r.w / 2 - triangleR.w / 2;
@@ -928,6 +1045,16 @@ int main(int argc, char* argv[])
 
         if (state == State::Main) {
             RenderMenu(mainContainer, mainTitleText, mainOptions, MAINMENU_NUM_OPTIONS);
+        }
+        else if (state == State::GameOver) {
+            gOverScoreText.setText(renderer, robotoF, scoreText.text, { 0, 191, 255 });
+            RenderGameOver(gOverContainer, gOverTitleText, gOverScoreText, gOverOptions, GAMEOVER_NUM_OPTIONS);
+
+            scoreCounter = 0.0f;
+            stableCheck.restart();
+            stableLevel = 0;
+            rotation = 0.0f;
+            selectedHorse = 0;
         }
         else if (state == State::Game) {
             UpdatePlayerPosition(triangleR, playerSprite, playerRotPoint, stableLevel);
