@@ -80,6 +80,8 @@ using namespace std::chrono_literals;
 #define PAUSE_NUM_OPTIONS 3
 #define FADE_TIME 500
 #define STABLE_MAX_MS 1500
+#define STABLE_CHANCE 50
+#define JUMP_DELAY_MS 3000
 #define MUSIC_VOLUME 64 // 128 is max
 
 int windowWidth = 240;
@@ -866,7 +868,15 @@ int main(int argc, char* argv[])
     Text gOverScoreText;
     SDL_FRect gOverContainer;
     GameOverInit(gOverContainer, gOverTitleText, gOverScoreText, gOverOptions, GAMEOVER_NUM_OPTIONS, 10, gOverLabels, gOverTypes);
+    Text jumpText;
+    jumpText.setText(renderer, robotoF, "Can Jump: Yes");
+    jumpText.dstR.w = jumpText.text.length() * LETTER_WIDTH * 0.5f;
+    jumpText.dstR.h = scoreText.dstR.h;
+    jumpText.dstR.x = 5;
+    jumpText.dstR.y = windowHeight - jumpText.dstR.h - 5;
+    bool canJump = true;
 
+    Clock jumpClock;
     Clock globalClock;
     Clock playerAnimationClock;
 
@@ -898,10 +908,20 @@ int main(int argc, char* argv[])
                     else {
                         keys[event.key.keysym.scancode] = true;
                         if (event.key.keysym.scancode == SDL_SCANCODE_SPACE) {
-                            isPlaying = !isPlaying;
-                            Mix_PlayChannel(-1, sndPause, 0);
-                            if (isPlaying) {
+                            bool wasPlaying = isPlaying;
+                            if (isPlaying && canJump) {
+                                isPlaying = false;
+                                Mix_PlayChannel(-1, sndPause, 0);
+                            }
+                            else if (!isPlaying) {
+                                isPlaying = true;
+                                Mix_PlayChannel(-1, sndPause, 0);
+                            }
+                            
+                            if (isPlaying && !wasPlaying) {
                                 if (currentHorse != selectedHorse) {
+                                    canJump = false;
+                                    jumpClock.restart();
                                     stableLevel = 0;
                                     stableCheck.restart();
                                     rotation = 0.0f;
@@ -1050,6 +1070,11 @@ int main(int argc, char* argv[])
             }
         }
         if (state == State::Game) {
+            if (jumpClock.getElapsedTime() > JUMP_DELAY_MS && !canJump) {
+                jumpText.setText(renderer, robotoF, "Can Jump: Yes");
+                canJump = true;
+            }
+            jumpText.setText(renderer, robotoF, canJump ? "Can Jump: Yes" : "Can Jump: No");
             if (wobbleChannel == -1) {
                 wobbleChannel = Mix_PlayChannel(-1, sndWobble, -1);
             }
@@ -1105,7 +1130,7 @@ int main(int argc, char* argv[])
                 UpdateScore(scoreText, renderer, robotoF, scoreCounter);
 
                 if (stableCheck.getElapsedTime() > STABLE_MAX_MS && stableLevel < 3) {
-                    if (random(0, 100) < 40) {
+                    if (random(0, 100) < STABLE_CHANCE) {
                         stableLevel++;
                     }
                     stableCheck.restart();
@@ -1187,6 +1212,7 @@ int main(int argc, char* argv[])
             SDL_RenderCopyExF(renderer, playerT, 0, &playerSprite, rotation, &playerRotPoint, SDL_FLIP_HORIZONTAL);
             SDL_RenderCopyF(renderer, triangleT, 0, &triangleR);
             scoreText.draw(renderer);
+            jumpText.draw(renderer);
         }
 
         SDL_RenderPresent(renderer);
