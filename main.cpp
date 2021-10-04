@@ -67,6 +67,7 @@ using namespace std::chrono_literals;
 #define GAME_SPEED 0.4
 #define PLAYER_FRAME_MS 50
 #define SCORE_MULTIPLIER 5
+#define OBSTACKLE_SPEED 0.2
 
 #define MAX_ROTATION_PLAYER 45
 #define MIN_ROTATION_PLAYER 0
@@ -747,6 +748,7 @@ int main(int argc, char* argv[])
     SDL_Texture* bgT = IMG_LoadTexture(renderer, "res/bg.png");
     SDL_Texture* triangleT = IMG_LoadTexture(renderer, "res/triangle.png");
     SDL_Texture* playerT = IMG_LoadTexture(renderer, "res/player.png");
+    SDL_Texture* obstackleT = IMG_LoadTexture(renderer, "res/obstackle.png");
     Entity player;
     player.r.w = 64;
     player.r.h = 64;
@@ -839,11 +841,13 @@ int main(int argc, char* argv[])
     Text gOverTitleText;
     Text gOverScoreText;
     SDL_FRect gOverContainer;
+    std::vector<SDL_FRect> obstackles;
+    bool jumping = false;
     GameOverInit(gOverContainer, gOverTitleText, gOverScoreText, gOverOptions, GAMEOVER_NUM_OPTIONS, 10, gOverLabels, gOverTypes);
 
     Clock globalClock;
     Clock playerAnimationClock;
-
+    Clock obstacklesClock;
     while (running) {
         if (!Mix_PlayingMusic() && state == State::Main && introPlayed) {
             introPlayed = false;
@@ -865,16 +869,19 @@ int main(int argc, char* argv[])
                 if (state == State::Game) {
                     keys[event.key.keysym.scancode] = true;
                     if (event.key.keysym.scancode == SDL_SCANCODE_SPACE) {
-                        isPlaying = !isPlaying;
                         if (isPlaying) {
                             if (currentHorse != selectedHorse) {
                                 stableLevel = 0;
                                 stableCheck.restart();
                                 rotation = 0.0f;
                             }
+                            if (obstackles.empty()) {
+                                isPlaying = false;
+                            }
                         }
                         else {
                             currentHorse = selectedHorse;
+                            isPlaying = true;
                         }
                     }
                     if (!isPlaying) {
@@ -891,6 +898,11 @@ int main(int argc, char* argv[])
                             if (selectedHorse < 0) {
                                 selectedHorse = 2;
                             }
+                        }
+                    }
+                    else {
+                        if (event.key.keysym.scancode == SDL_SCANCODE_W) {
+                            jumping = true;
                         }
                     }
                 }
@@ -1066,6 +1078,9 @@ int main(int argc, char* argv[])
             SDL_RenderCopyExF(renderer, horse3T, &player.srcR, &thirdHorse.r, 0, 0, SDL_FLIP_HORIZONTAL);
             SDL_RenderCopyExF(renderer, playerT, 0, &playerSprite, rotation, &playerRotPoint, SDL_FLIP_HORIZONTAL);
             SDL_RenderCopyF(renderer, triangleT, 0, &triangleR);
+            for (int i = 0; i < obstackles.size(); ++i) {
+                SDL_RenderCopyF(renderer, obstackleT, 0, &obstackles[i]);
+            }
             scoreText.draw(renderer);
         }
 
