@@ -596,6 +596,7 @@ int main(int argc, char* argv[])
     bool isPlaying = true;
     int selectedHorse = 0;
     int currentHorse = selectedHorse;
+	Mix_Chunk *sndJump = Mix_LoadWAV("res/jump.wav");
 	Mix_Music *music = Mix_LoadMUS("res/music.ogg");
 	Mix_PlayMusic(music, -1);
     Text scoreText;
@@ -644,14 +645,16 @@ int main(int argc, char* argv[])
                     }
 				}
                 if (!isPlaying) {
-                    if (event.key.keysym.scancode == SDL_SCANCODE_W) {
+                    if (event.key.keysym.scancode == SDL_SCANCODE_W || event.key.keysym.scancode == SDL_SCANCODE_UP) {
                         ++selectedHorse;
+						Mix_PlayChannel(-1, sndJump, 0);
                         if (selectedHorse > 2) {
                             selectedHorse = 0;
                         }
                     }
-                    if (event.key.keysym.scancode == SDL_SCANCODE_S) {
+                    if (event.key.keysym.scancode == SDL_SCANCODE_S || event.key.keysym.scancode == SDL_SCANCODE_DOWN) {
                         --selectedHorse;
+						Mix_PlayChannel(-1, sndJump, 0);
                         if (selectedHorse < 0) {
                             selectedHorse = 2;
                         }
@@ -766,6 +769,7 @@ int main(int argc, char* argv[])
 
         SDL_RenderPresent(renderer);
     }
+	Mix_FreeChunk(sndJump);
 	Mix_FreeMusic(music);
 	Mix_CloseAudio();
     // TODO: On mobile remember to use eventWatch function (it doesn't reach this code when terminating)
