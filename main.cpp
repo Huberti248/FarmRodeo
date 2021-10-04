@@ -613,7 +613,7 @@ void MenuInit(SDL_FRect& container,
     container.y = 0;
 
     titleText.dstR.w = container.w - SCREEN_PADDING * 2;
-    titleText.dstR.h = 50;
+    titleText.dstR.h = 30;
     titleText.dstR.x = windowWidth / 2.0f - titleText.dstR.w / 2.0f;
     titleText.dstR.y = SCREEN_PADDING;
     titleText.setText(renderer, robotoF, titleString, { 255, 0, 0 });
