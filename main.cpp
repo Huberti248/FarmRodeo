@@ -77,6 +77,7 @@ using namespace std::chrono_literals;
 #define BUTTON_UNSELECTED {255,255,255}
 #define MAINMENU_NUM_OPTIONS 2
 #define GAMEOVER_NUM_OPTIONS 3
+#define PAUSE_NUM_OPTIONS 3
 #define FADE_TIME 500
 #define STABLE_MAX_MS 1500
 #define MUSIC_VOLUME 64 // 128 is max
@@ -95,6 +96,7 @@ TTF_Font* robotoF;
 enum class State {
     Main,
     Game,
+    Paused,
     GameOver
 };
 
@@ -833,6 +835,22 @@ int main(int argc, char* argv[])
     SDL_FRect mainContainer;
     MenuInit(mainContainer, mainTitleText, "Farm Rodeo", mainOptions, MAINMENU_NUM_OPTIONS, 10, mainLabels, mainMenuTypes);
 
+    MenuButton pauseOptions[PAUSE_NUM_OPTIONS];
+    const std::string pauseLabels[PAUSE_NUM_OPTIONS] = {
+        "Resume",
+        "Main Menu",
+        "Quit"
+    };
+    const MenuOption pauseMenuTypes[PAUSE_NUM_OPTIONS] = {
+        MenuOption::Resume,
+        MenuOption::Main,
+        MenuOption::Quit
+    };
+    Text pauseTitleText;
+    SDL_FRect pauseContainer;
+    bool pauseKeyHeld = false;
+    MenuInit(pauseContainer, pauseTitleText, "Paused", pauseOptions, PAUSE_NUM_OPTIONS, 10, pauseLabels, pauseMenuTypes);
+
     MenuButton gOverOptions[GAMEOVER_NUM_OPTIONS];
     const std::string gOverLabels[GAMEOVER_NUM_OPTIONS] = {
         "Play Again",
@@ -859,10 +877,9 @@ int main(int argc, char* argv[])
         };
         float deltaTime = globalClock.restart();
         SDL_Event event;
-		std::copy(std::begin(keys), std::end(keys), std::begin(lastKeys));
+        std::copy(std::begin(keys), std::end(keys), std::begin(lastKeys));
         while (SDL_PollEvent(&event)) {
-            if (event.type == SDL_QUIT ||
-				(event.type == SDL_KEYDOWN && event.key.keysym.scancode == SDL_SCANCODE_ESCAPE)) {
+            if (event.type == SDL_QUIT) {
                 running = false;
                 // TODO: On mobile remember to use eventWatch function (it doesn't reach this code when terminating)
             }
@@ -871,41 +888,68 @@ int main(int argc, char* argv[])
             }
             if (event.type == SDL_KEYDOWN) {
                 if (state == State::Game) {
-                    keys[event.key.keysym.scancode] = true;
-                    if (event.key.keysym.scancode == SDL_SCANCODE_SPACE) {
-                        isPlaying = !isPlaying;
-                        Mix_PlayChannel(-1, sndPause, 0);
-                        if (isPlaying) {
-                            if (currentHorse != selectedHorse) {
-                                stableLevel = 0;
-                                stableCheck.restart();
-                                rotation = 0.0f;
-                            }
-                        }
-                        else {
-                            currentHorse = selectedHorse;
+                    if (event.key.keysym.scancode == SDL_SCANCODE_ESCAPE) {
+                        if (!pauseKeyHeld) {
+                            pauseKeyHeld = true;
+                            state = State::Paused;
+                            Mix_PauseMusic();
                         }
                     }
-                    if (!isPlaying) {
-                        if (event.key.keysym.scancode == SDL_SCANCODE_W) {
-                            ++selectedHorse;
-                            Mix_PlayChannel(-1, sndJump, 0);
-                            if (selectedHorse > 2) {
-                                selectedHorse = 0;
+                    else {
+                        keys[event.key.keysym.scancode] = true;
+                        if (event.key.keysym.scancode == SDL_SCANCODE_SPACE) {
+                            isPlaying = !isPlaying;
+                            Mix_PlayChannel(-1, sndPause, 0);
+                            if (isPlaying) {
+                                if (currentHorse != selectedHorse) {
+                                    stableLevel = 0;
+                                    stableCheck.restart();
+                                    rotation = 0.0f;
+                                }
+                            }
+                            else {
+                                currentHorse = selectedHorse;
                             }
                         }
-                        if (event.key.keysym.scancode == SDL_SCANCODE_S) {
-                            --selectedHorse;
-                            Mix_PlayChannel(-1, sndJump, 0);
-                            if (selectedHorse < 0) {
-                                selectedHorse = 2;
+                        if (!isPlaying) {
+                            if (event.key.keysym.scancode == SDL_SCANCODE_W) {
+                                ++selectedHorse;
+                                Mix_PlayChannel(-1, sndJump, 0);
+                                if (selectedHorse > 2) {
+                                    selectedHorse = 0;
+                                }
                             }
+                            if (event.key.keysym.scancode == SDL_SCANCODE_S) {
+                                --selectedHorse;
+                                Mix_PlayChannel(-1, sndJump, 0);
+                                if (selectedHorse < 0) {
+                                    selectedHorse = 2;
+                                }
+                            }
+                        }
+                    }
+                }
+                else if (state == State::Paused) {
+                    if (event.key.keysym.scancode == SDL_SCANCODE_ESCAPE) {
+                        if (!pauseKeyHeld) {
+                            pauseKeyHeld = true;
+                            state = State::Game;
+                            Mix_ResumeMusic();
                         }
                     }
                 }
             }
             if (event.type == SDL_KEYUP) {
-                keys[event.key.keysym.scancode] = false;
+                if (state == State::Game || state == State::Paused) {
+                    if (event.key.keysym.scancode == SDL_SCANCODE_ESCAPE) {
+                        if (pauseKeyHeld) {
+                            pauseKeyHeld = false;
+                        }
+                    }
+                    else {
+                        keys[event.key.keysym.scancode] = false;
+                    }
+                }
             }
             if (event.type == SDL_MOUSEBUTTONDOWN) {
                 buttons[event.button.button] = true;
@@ -926,15 +970,38 @@ int main(int argc, char* argv[])
                         }
                     }
                 }
+                else if (state == State::Paused) {
+                    for (int i = 0; i < PAUSE_NUM_OPTIONS; ++i) {
+                        if (SDL_PointInFRect(&mousePos, &pauseOptions[i].buttonText.dstR)) {
+                            HandleMenuOption(pauseOptions[i].menuType, state, running);
+                            buttonUse = true;
+                        }
+                    }
+                }
                 if (buttonUse) {
                     Mix_PlayChannel(-1, sndClick, 0);
                     if (state == State::Game) {
-                        Mix_FadeOutMusic(FADE_TIME);
-                        Mix_FadeInMusic(musicGame, -1, FADE_TIME);
+                        if (Mix_PausedMusic()) {
+                            Mix_ResumeMusic();
+                        }
+                        else {
+                            Mix_FadeOutMusic(FADE_TIME);
+                            Mix_FadeInMusic(musicGame, -1, FADE_TIME);
+                        }
                     }
                     else if (state == State::Main) {
-                        Mix_FadeOutMusic(FADE_TIME);
+                        if (Mix_PausedMusic()) {
+                            Mix_HaltMusic();
+                        }
+                        else {
+                            Mix_FadeOutMusic(FADE_TIME);
+                        }
                         Mix_FadeInMusic(musicMainIntro, 1, FADE_TIME);
+                    }
+                    else if (state == State::Paused) {
+                        if (Mix_PlayingMusic()) {
+                            Mix_PauseMusic();
+                        }
                     }
                 }
 
@@ -967,6 +1034,16 @@ int main(int argc, char* argv[])
                         }
                         else {
                             gOverOptions[i].selected = false;
+                        }
+                    }
+                }
+                else if (state == State::Paused) {
+                    for (int i = 0; i < PAUSE_NUM_OPTIONS; ++i) {
+                        if (SDL_PointInFRect(&mousePos, &pauseOptions[i].buttonText.dstR)) {
+                            pauseOptions[i].selected = true;
+                        }
+                        else {
+                            pauseOptions[i].selected = false;
                         }
                     }
                 }
@@ -1055,7 +1132,7 @@ int main(int argc, char* argv[])
                     state = State::GameOver;
                     Mix_PlayChannel(-1, sndDeath, 0);
                     Mix_FadeOutMusic(FADE_TIME);
-					Mix_FadeInMusic(musicGameover, 1, FADE_TIME);
+                    Mix_FadeInMusic(musicGameover, 1, FADE_TIME);
                 }
             }
             else {  // !isPlaying
@@ -1074,12 +1151,20 @@ int main(int argc, char* argv[])
                 triangleR.y = thirdHorse.r.y - triangleR.h + 20;
             }
         }
+        else if (state == State::Paused) {
+            if (wobbleChannel != -1) {
+                Mix_Volume(wobbleChannel, 0);
+            }
+        }
         
         SDL_SetRenderDrawColor(renderer, 255, 255, 255, 0);
         SDL_RenderClear(renderer);
 
         if (state == State::Main) {
             RenderMenu(mainContainer, mainTitleText, mainOptions, MAINMENU_NUM_OPTIONS);
+        }
+        else if (state == State::Paused) {
+            RenderMenu(pauseContainer, pauseTitleText, pauseOptions, PAUSE_NUM_OPTIONS);
         }
         else if (state == State::GameOver) {
             gOverScoreText.setText(renderer, robotoF, scoreText.text, { 0, 191, 255 });
