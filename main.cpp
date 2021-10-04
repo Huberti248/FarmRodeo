@@ -791,7 +791,12 @@ int main(int argc, char* argv[])
     bool isPlaying = true;
     int selectedHorse = 0;
     int currentHorse = selectedHorse;
-	Mix_Chunk* sndJump = Mix_LoadWAV("res/jump.wav");
+    Mix_Chunk* sndJump = Mix_LoadWAV("res/jump.wav");
+    Mix_Chunk* sndClick = Mix_LoadWAV("res/click.wav");
+    Mix_Chunk* sndDeath = Mix_LoadWAV("res/death.wav");
+    Mix_Chunk* sndWobble = Mix_LoadWAV("res/wobble.wav");
+    int wobbleChannel = -1;
+    Mix_Chunk* sndPause = Mix_LoadWAV("res/pause.wav");
 	Mix_Music* musicGame = Mix_LoadMUS("res/music.ogg");
     Mix_Music* musicMainIntro = Mix_LoadMUS("res/menu0.ogg");
     Mix_Music* musicMainLoop = Mix_LoadMUS("res/menu1.ogg");
@@ -869,6 +874,7 @@ int main(int argc, char* argv[])
                     keys[event.key.keysym.scancode] = true;
                     if (event.key.keysym.scancode == SDL_SCANCODE_SPACE) {
                         isPlaying = !isPlaying;
+                        Mix_PlayChannel(-1, sndPause, 0);
                         if (isPlaying) {
                             if (currentHorse != selectedHorse) {
                                 stableLevel = 0;
@@ -921,6 +927,7 @@ int main(int argc, char* argv[])
                     }
                 }
                 if (buttonUse) {
+                    Mix_PlayChannel(-1, sndClick, 0);
                     if (state == State::Game) {
                         Mix_FadeOutMusic(FADE_TIME);
                         Mix_FadeInMusic(musicGame, -1, FADE_TIME);
@@ -966,6 +973,9 @@ int main(int argc, char* argv[])
             }
         }
         if (state == State::Game) {
+            if (wobbleChannel == -1) {
+                wobbleChannel = Mix_PlayChannel(-1, sndWobble, -1);
+            }
             if (keys[SDL_SCANCODE_M] && !lastKeys[SDL_SCANCODE_M]) {
                 if (Mix_PausedMusic()) {
                     Mix_ResumeMusic();
@@ -1024,11 +1034,32 @@ int main(int argc, char* argv[])
                     stableCheck.restart();
                 }
                 UpdateStability(rotation, rotationDir, stableLevels, stableLevel);
+                switch (stableLevel) {
+                case 0:
+                    Mix_Volume(wobbleChannel, 0);
+                    break;
+                case 1:
+                    Mix_Volume(wobbleChannel, 32);
+                    break;
+                case 2:
+                    Mix_Volume(wobbleChannel, 64);
+                    break;
+                case 3:
+                    Mix_Volume(wobbleChannel, 96);
+                    break;
+                case 4:
+                    Mix_Volume(wobbleChannel, 0);
+                    break;
+                }
                 if (stableLevel == 4) {
                     state = State::GameOver;
+                    Mix_PlayChannel(-1, sndDeath, 0);
                     Mix_FadeOutMusic(FADE_TIME);
 					Mix_FadeInMusic(musicGameover, 1, FADE_TIME);
                 }
+            }
+            else {  // !isPlaying
+                Mix_Volume(wobbleChannel, 0);
             }
             if (selectedHorse == 0) {
                 triangleR.x = player.r.x + player.r.w / 2 - triangleR.w / 2;
@@ -1075,7 +1106,11 @@ int main(int argc, char* argv[])
 
         SDL_RenderPresent(renderer);
     }
-	Mix_FreeChunk(sndJump);
+    Mix_FreeChunk(sndJump);
+    Mix_FreeChunk(sndClick);
+    Mix_FreeChunk(sndDeath);
+    Mix_FreeChunk(sndWobble);
+    Mix_FreeChunk(sndPause);
 	Mix_FreeMusic(musicGame);
 	Mix_FreeMusic(musicMainIntro);
 	Mix_FreeMusic(musicMainLoop);
