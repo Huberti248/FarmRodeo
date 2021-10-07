@@ -68,14 +68,21 @@ using namespace std::chrono_literals;
 #define PLAYER_FRAME_MS 50
 #define SCORE_MULTIPLIER 5
 #define OBSTACKLE_SPEED 0.2
+#define JUMP_SPEED 0.2
 
 #define MAX_ROTATION_PLAYER 45
 #define MIN_ROTATION_PLAYER 0
 #define ROTATION_INCREMENT 0.05
 #define SCREEN_PADDING 20
 #define LETTER_WIDTH 20
-#define BUTTON_SELECTED {255,0,0}
-#define BUTTON_UNSELECTED {255,255,255}
+#define BUTTON_SELECTED \
+    {                   \
+        255, 0, 0       \
+    }
+#define BUTTON_UNSELECTED \
+    {                     \
+        255, 255, 255     \
+    }
 #define MAINMENU_NUM_OPTIONS 2
 #define GAMEOVER_NUM_OPTIONS 3
 #define PAUSE_NUM_OPTIONS 3
@@ -517,9 +524,8 @@ struct StabilityLevel {
     float maxRotation;
 };
 
-
-
-void UpdatePlayerPosition(const SDL_FRect triangleR, SDL_FRect& playerR, SDL_FPoint& playerRotPoint, int stableLevel) { 
+void UpdatePlayerPosition(const SDL_FRect triangleR, SDL_FRect& playerR, SDL_FPoint& playerRotPoint, int stableLevel)
+{
     playerR.x = triangleR.x + 5;
     playerR.y = triangleR.y + 30;
 
@@ -527,13 +533,14 @@ void UpdatePlayerPosition(const SDL_FRect triangleR, SDL_FRect& playerR, SDL_FPo
         playerRotPoint.x = playerR.x;
         playerRotPoint.y = playerR.y;
     }
-    else{
+    else {
         playerRotPoint.x = playerR.w - 5;
         playerRotPoint.y = 15;
     }
 }
 
-void UpdateStability(float& rotation, bool& rotationDir, const StabilityLevel levels[], int& levelIndex) {
+void UpdateStability(float& rotation, bool& rotationDir, const StabilityLevel levels[], int& levelIndex)
+{
     StabilityLevel currentLevel = levels[levelIndex];
 
     rotation += rotationDir ? currentLevel.speed : -currentLevel.speed;
@@ -553,7 +560,8 @@ void UpdateStability(float& rotation, bool& rotationDir, const StabilityLevel le
     }
 }
 
-void UpdateScore(Text& scoreText, SDL_Renderer* renderer, TTF_Font* font, float scoreCounter) {
+void UpdateScore(Text& scoreText, SDL_Renderer* renderer, TTF_Font* font, float scoreCounter)
+{
     int score = scoreCounter * SCORE_MULTIPLIER;
     scoreText.setText(renderer, font, "Score: " + std::to_string(score));
     scoreText.dstR.w = 50 + 20.0f * std::to_string(score).length();
@@ -730,13 +738,23 @@ void RenderGameOver(SDL_FRect& container,
     }
 }
 
+void setState(State& currState, State dstState, Mix_Chunk* sndDeath, Mix_Music* musicGameover)
+{
+    currState = dstState;
+    if (dstState == State::GameOver) {
+        Mix_PlayChannel(-1, sndDeath, 0);
+        Mix_FadeOutMusic(FADE_TIME);
+        Mix_FadeInMusic(musicGameover, 1, FADE_TIME);
+    }
+}
+
 int main(int argc, char* argv[])
 {
     std::srand(std::time(0));
     SDL_LogSetAllPriority(SDL_LOG_PRIORITY_VERBOSE);
     SDL_LogSetOutputFunction(logOutputCallback, 0);
     SDL_Init(SDL_INIT_EVERYTHING);
-	Mix_OpenAudio(44100, AUDIO_S16, 2, 4096);
+    Mix_OpenAudio(44100, AUDIO_S16, 2, 4096);
     TTF_Init();
     SDL_GetMouseState(&mousePos.x, &mousePos.y);
     window = SDL_CreateWindow("FarmRodeo", SDL_WINDOWPOS_CENTERED, SDL_WINDOWPOS_CENTERED, windowWidth, windowHeight, SDL_WINDOW_RESIZABLE);
@@ -754,6 +772,8 @@ int main(int argc, char* argv[])
     SDL_Texture* triangleT = IMG_LoadTexture(renderer, "res/triangle.png");
     SDL_Texture* playerT = IMG_LoadTexture(renderer, "res/player.png");
     SDL_Texture* obstackleT = IMG_LoadTexture(renderer, "res/obstackle.png");
+    State state = State::Main;
+gameBegin:
     Entity player;
     player.r.w = 64;
     player.r.h = 64;
@@ -803,29 +823,27 @@ int main(int argc, char* argv[])
     Mix_Chunk* sndWobble = Mix_LoadWAV("res/wobble.wav");
     int wobbleChannel = -1;
     Mix_Chunk* sndPause = Mix_LoadWAV("res/pause.wav");
-	Mix_Music* musicGame = Mix_LoadMUS("res/music.ogg");
+    Mix_Music* musicGame = Mix_LoadMUS("res/music.ogg");
     Mix_Music* musicMainIntro = Mix_LoadMUS("res/menu0.ogg");
     Mix_Music* musicMainLoop = Mix_LoadMUS("res/menu1.ogg");
-	Mix_Music* musicGameover = Mix_LoadMUS("res/gameover.xm");
-	Mix_VolumeMusic(MUSIC_VOLUME);
-	Mix_PlayMusic(musicMainIntro, 0);
+    Mix_Music* musicGameover = Mix_LoadMUS("res/gameover.xm");
+    Mix_VolumeMusic(MUSIC_VOLUME);
+    Mix_PlayMusic(musicMainIntro, 0);
     bool introPlayed = true;
     Text scoreText;
     float scoreCounter = 0;
     scoreText.dstR.y = 5;
     scoreText.dstR.h = 20;
     UpdateScore(scoreText, renderer, robotoF, scoreCounter);
-    const StabilityLevel stableLevels[] =
-    {
-        {0.001f, 1.0f},
-        {0.03f, 20.0f},
-        {0.06f, 60.0f},
-        {0.075f, 100.0f}
+    const StabilityLevel stableLevels[] = {
+        { 0.001f, 1.0f },
+        { 0.03f, 20.0f },
+        { 0.06f, 60.0f },
+        { 0.075f, 100.0f }
     };
     int stableLevel = 0;
     Clock stableCheck;
 
-    State state = State::Main;
     MenuButton mainOptions[MAINMENU_NUM_OPTIONS];
     const std::string mainLabels[MAINMENU_NUM_OPTIONS] = {
         "Play",
@@ -871,16 +889,16 @@ int main(int argc, char* argv[])
     SDL_FRect gOverContainer;
     std::vector<SDL_FRect> obstackles;
     bool jumping = false;
+    bool isJumpingUp = true;
     GameOverInit(gOverContainer, gOverTitleText, gOverScoreText, gOverOptions, GAMEOVER_NUM_OPTIONS, 10, gOverLabels, gOverTypes);
     Text jumpText;
-    jumpText.setText(renderer, robotoF, "Can Jump: Yes");
+    jumpText.setText(renderer, robotoF, "Can Change: Yes");
     jumpText.dstR.w = jumpText.text.length() * LETTER_WIDTH * 0.5f;
     jumpText.dstR.h = scoreText.dstR.h;
     jumpText.dstR.x = 5;
     jumpText.dstR.y = windowHeight - jumpText.dstR.h - 5;
     bool canJump = true;
 
-    Clock jumpClock;
     Clock globalClock;
     Clock playerAnimationClock;
     Clock obstacklesClock;
@@ -901,6 +919,7 @@ int main(int argc, char* argv[])
                 SDL_RenderSetScale(renderer, event.window.data1 / (float)windowWidth, event.window.data2 / (float)windowHeight);
             }
             if (event.type == SDL_KEYDOWN) {
+                keys[event.key.keysym.scancode] = true;
                 if (state == State::Game) {
                     if (event.key.keysym.scancode == SDL_SCANCODE_ESCAPE) {
                         if (!pauseKeyHeld) {
@@ -910,7 +929,6 @@ int main(int argc, char* argv[])
                         }
                     }
                     else {
-                        keys[event.key.keysym.scancode] = true;
                         if (event.key.keysym.scancode == SDL_SCANCODE_SPACE) {
                             bool wasPlaying = isPlaying;
                             if (isPlaying && canJump) {
@@ -921,11 +939,10 @@ int main(int argc, char* argv[])
                                 isPlaying = true;
                                 Mix_PlayChannel(-1, sndPause, 0);
                             }
-                            
+
                             if (isPlaying && !wasPlaying) {
                                 if (currentHorse != selectedHorse) {
                                     canJump = false;
-                                    jumpClock.restart();
                                     stableLevel = 0;
                                     stableCheck.restart();
                                     rotation = 0.0f;
@@ -961,22 +978,15 @@ int main(int argc, char* argv[])
                             Mix_ResumeMusic();
                         }
                     }
-                    else {
-                        if (event.key.keysym.scancode == SDL_SCANCODE_W) {
-                            jumping = true;
-                        }
-                    }
                 }
             }
             if (event.type == SDL_KEYUP) {
+                keys[event.key.keysym.scancode] = false;
                 if (state == State::Game || state == State::Paused) {
                     if (event.key.keysym.scancode == SDL_SCANCODE_ESCAPE) {
                         if (pauseKeyHeld) {
                             pauseKeyHeld = false;
                         }
-                    }
-                    else {
-                        keys[event.key.keysym.scancode] = false;
                     }
                 }
             }
@@ -987,6 +997,9 @@ int main(int argc, char* argv[])
                     for (int i = 0; i < MAINMENU_NUM_OPTIONS; ++i) {
                         if (SDL_PointInFRect(&mousePos, &mainOptions[i].buttonText.dstR)) {
                             HandleMenuOption(mainOptions[i].menuType, state, running);
+                            if (state == State::Game) {
+                                goto gameBegin;
+                            }
                             buttonUse = true;
                         }
                     }
@@ -995,6 +1008,9 @@ int main(int argc, char* argv[])
                     for (int i = 0; i < GAMEOVER_NUM_OPTIONS; ++i) {
                         if (SDL_PointInFRect(&mousePos, &gOverOptions[i].buttonText.dstR)) {
                             HandleMenuOption(gOverOptions[i].menuType, state, running);
+                            if (state == State::Game) {
+                                goto gameBegin;
+                            }
                             buttonUse = true;
                         }
                     }
@@ -1033,7 +1049,6 @@ int main(int argc, char* argv[])
                         }
                     }
                 }
-
             }
             if (event.type == SDL_MOUSEBUTTONUP) {
                 buttons[event.button.button] = false;
@@ -1079,11 +1094,7 @@ int main(int argc, char* argv[])
             }
         }
         if (state == State::Game) {
-            if (jumpClock.getElapsedTime() > JUMP_DELAY_MS && !canJump) {
-                jumpText.setText(renderer, robotoF, "Can Jump: Yes");
-                canJump = true;
-            }
-            jumpText.setText(renderer, robotoF, canJump ? "Can Jump: Yes" : "Can Jump: No");
+            jumpText.setText(renderer, robotoF, canJump ? "Can Change: Yes" : "Can Change: No");
             if (wobbleChannel == -1) {
                 wobbleChannel = Mix_PlayChannel(-1, sndWobble, -1);
             }
@@ -1096,6 +1107,124 @@ int main(int argc, char* argv[])
                 }
             }
             if (isPlaying) {
+                if (keys[SDL_SCANCODE_W]) {
+                    jumping = true;
+                }
+                if (jumping) {
+                    if (selectedHorse == 0) {
+                        if (isJumpingUp) {
+                            player.r.y -= deltaTime * JUMP_SPEED;
+                        }
+                        else {
+                            player.r.y += deltaTime * JUMP_SPEED;
+                        }
+                        if (isJumpingUp) {
+                            if (player.r.y < windowHeight / 2 - player.r.h / 2 - 50) {
+                                isJumpingUp = false;
+                            }
+                        }
+                        else {
+                            if (player.r.y >= windowHeight / 2 - player.r.h / 2) {
+                                player.r.y = windowHeight / 2 - player.r.h / 2;
+                                isJumpingUp = true;
+                                jumping = false;
+                            }
+                        }
+                    }
+                    else if (selectedHorse == 1) {
+                        if (isJumpingUp) {
+                            secondHorse.r.y -= deltaTime * JUMP_SPEED;
+                        }
+                        else {
+                            secondHorse.r.y += deltaTime * JUMP_SPEED;
+                        }
+                        if (isJumpingUp) {
+                            if (secondHorse.r.y < windowHeight / 2 - player.r.h / 2 - secondHorse.r.h - 50 - 50) {
+                                isJumpingUp = false;
+                            }
+                        }
+                        else {
+                            if (secondHorse.r.y >= windowHeight / 2 - player.r.h / 2 - secondHorse.r.h - 50) {
+                                secondHorse.r.y = windowHeight / 2 - player.r.h / 2 - secondHorse.r.h - 50;
+                                isJumpingUp = true;
+                                jumping = false;
+                            }
+                        }
+                    }
+                    else if (selectedHorse == 2) {
+                        if (isJumpingUp) {
+                            thirdHorse.r.y -= deltaTime * JUMP_SPEED;
+                        }
+                        else {
+                            thirdHorse.r.y += deltaTime * JUMP_SPEED;
+                        }
+                        if (isJumpingUp) {
+                            if (thirdHorse.r.y < windowHeight / 2 - player.r.h / 2 + player.r.h + 50 - 50) {
+                                isJumpingUp = false;
+                            }
+                        }
+                        else {
+                            if (thirdHorse.r.y >= windowHeight / 2 - player.r.h / 2 + player.r.h + 50) {
+                                thirdHorse.r.y = windowHeight / 2 - player.r.h / 2 + player.r.h + 50;
+                                isJumpingUp = true;
+                                jumping = false;
+                            }
+                        }
+                    }
+                }
+                if (obstacklesClock.getElapsedTime() > 1800) {
+                    obstackles.push_back(SDL_FRect());
+                    obstackles.back().w = 32;
+                    obstackles.back().h = 32;
+                    obstackles.back().x = windowWidth;
+                    if (selectedHorse == 0) {
+                        obstackles.back().y = player.r.y + player.r.h / 2 - obstackles.back().h / 2;
+                    }
+                    else if (selectedHorse == 1) {
+                        obstackles.back().y = secondHorse.r.y + secondHorse.r.h / 2 - obstackles.back().h / 2;
+                    }
+                    else if (selectedHorse == 2) {
+                        obstackles.back().y = thirdHorse.r.y + thirdHorse.r.h / 2 - obstackles.back().h / 2;
+                    }
+                    canJump = false;
+                    obstacklesClock.restart();
+                }
+                for (int i = 0; i < obstackles.size(); ++i) {
+                    obstackles[i].x += -deltaTime * OBSTACKLE_SPEED;
+                    if (obstackles[i].x + obstackles[i].w < 0) {
+                        obstackles.erase(obstackles.begin() + i--);
+                        if (obstackles.empty()) {
+                            canJump = true;
+                        }
+                    }
+                }
+                if (selectedHorse == 0) {
+                    for (int i = 0; i < obstackles.size(); ++i) {
+                        if (SDL_HasIntersectionF(&obstackles[i], &player.r)) {
+                            if (!jumping) {
+                                setState(state, State::GameOver, sndDeath, musicGameover);
+                            }
+                        }
+                    }
+                }
+                else if (selectedHorse == 1) {
+                    for (int i = 0; i < obstackles.size(); ++i) {
+                        if (SDL_HasIntersectionF(&obstackles[i], &secondHorse.r)) {
+                            if (!jumping) {
+                                setState(state, State::GameOver, sndDeath, musicGameover);
+                            }
+                        }
+                    }
+                }
+                else if (selectedHorse == 2) {
+                    for (int i = 0; i < obstackles.size(); ++i) {
+                        if (SDL_HasIntersectionF(&obstackles[i], &thirdHorse.r)) {
+                            if (!jumping) {
+                                setState(state, State::GameOver, sndDeath, musicGameover);
+                            }
+                        }
+                    }
+                }
                 player.dx = 0;
                 player.dy = 0;
                 if (keys[SDL_SCANCODE_A] || keys[SDL_SCANCODE_LEFT]) {
@@ -1163,13 +1292,10 @@ int main(int argc, char* argv[])
                     break;
                 }
                 if (stableLevel == 4) {
-                    state = State::GameOver;
-                    Mix_PlayChannel(-1, sndDeath, 0);
-                    Mix_FadeOutMusic(FADE_TIME);
-                    Mix_FadeInMusic(musicGameover, 1, FADE_TIME);
+                    setState(state, State::GameOver, sndDeath, musicGameover);
                 }
             }
-            else {  // !isPlaying
+            else { // !isPlaying
                 Mix_Volume(wobbleChannel, 0);
             }
             if (selectedHorse == 0) {
@@ -1190,7 +1316,7 @@ int main(int argc, char* argv[])
                 Mix_Volume(wobbleChannel, 0);
             }
         }
-        
+
         SDL_SetRenderDrawColor(renderer, 255, 255, 255, 0);
         SDL_RenderClear(renderer);
 
@@ -1225,6 +1351,9 @@ int main(int argc, char* argv[])
             }
             scoreText.draw(renderer);
             jumpText.draw(renderer);
+            for (int i = 0; i < obstackles.size(); ++i) {
+                SDL_RenderCopyF(renderer, obstackleT, 0, &obstackles[i]);
+            }
         }
 
         SDL_RenderPresent(renderer);
@@ -1234,11 +1363,11 @@ int main(int argc, char* argv[])
     Mix_FreeChunk(sndDeath);
     Mix_FreeChunk(sndWobble);
     Mix_FreeChunk(sndPause);
-	Mix_FreeMusic(musicGame);
-	Mix_FreeMusic(musicMainIntro);
-	Mix_FreeMusic(musicMainLoop);
-	Mix_FreeMusic(musicGameover);
-	Mix_CloseAudio();
+    Mix_FreeMusic(musicGame);
+    Mix_FreeMusic(musicMainIntro);
+    Mix_FreeMusic(musicMainLoop);
+    Mix_FreeMusic(musicGameover);
+    Mix_CloseAudio();
     // TODO: On mobile remember to use eventWatch function (it doesn't reach this code when terminating)
     return 0;
 }

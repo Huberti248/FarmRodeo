@@ -28,11 +28,11 @@ Name: "english"; MessagesFile: "compiler:Default.isl"
 
 [Tasks]
 Name: "desktopicon"; Description: "{cm:CreateDesktopIcon}"; GroupDescription: "{cm:AdditionalIcons}"; Flags: unchecked
-
+                         
 [Files]
 Source: "C:\home\dev\EndlessRunner\bin\Debug_x86\{#MyAppExeName}"; DestDir: "{app}"; Flags: ignoreversion
 Source: "C:\home\dev\EndlessRunner\bin\Debug_x86\*"; DestDir: "{app}"; Flags: ignoreversion recursesubdirs createallsubdirs
-Source: "C:\home\dev\EndlessRunner\res\*"; DestDir: "{app}"; Flags: ignoreversion recursesubdirs createallsubdirs
+Source: "C:\home\dev\EndlessRunner\res\*"; DestDir: "{app}\res"; Flags: ignoreversion recursesubdirs createallsubdirs
 ; NOTE: Don't use "Flags: ignoreversion" on any shared system files
 
 [Icons]
