@@ -35,7 +35,7 @@
 #include "vendor/GLM/include/glm/gtc/matrix_transform.hpp"
 #include "vendor/GLM/include/glm/gtc/type_ptr.hpp"
 #else
-//#include <pugixml.hpp>
+#include <pugixml.hpp>
 //#include <glm/glm.hpp>
 //#include <glm/gtc/matrix_transform.hpp>
 //#include <glm/gtc/type_ptr.hpp>
@@ -69,6 +69,7 @@ using namespace std::chrono_literals;
 #define SCORE_MULTIPLIER 5
 #define OBSTACKLE_SPEED 0.2
 #define JUMP_SPEED 0.2
+#define BLUE_COLOR 0, 191, 255
 
 #define MAX_ROTATION_PLAYER 45
 #define MIN_ROTATION_PLAYER 0
@@ -102,6 +103,7 @@ bool buttons[SDL_BUTTON_X2 + 1];
 SDL_Window* window;
 SDL_Renderer* renderer;
 TTF_Font* robotoF;
+std::string prefPath;
 
 enum class State {
     Main,
@@ -680,6 +682,7 @@ void RenderMenu(SDL_FRect& container,
 void GameOverInit(SDL_FRect& container,
     Text& titleText,
     Text& scoreText,
+    Text& highScoreText,
     MenuButton options[],
     const int numOptions,
     const int buttonPadding,
@@ -702,6 +705,9 @@ void GameOverInit(SDL_FRect& container,
     scoreText.dstR.h = 25;
     scoreText.dstR.x = windowWidth / 2.0f - titleText.dstR.w / 2.0f;
     scoreText.dstR.y = titleText.dstR.y + titleText.dstR.h + SCREEN_PADDING;
+
+    highScoreText.dstR = scoreText.dstR;
+    highScoreText.dstR.y = scoreText.dstR.y + scoreText.dstR.h;
 
     // Setup buttons
     for (int i = 0; i < numOptions; ++i) {
@@ -761,6 +767,44 @@ void unmuteMusicAndSounds()
     Mix_Volume(-1, 128);
 }
 
+void loadData(Text& highestScoreText)
+{
+#ifdef __EMSCRIPTEN__
+    highestScoreText.setText(renderer, robotoF,
+        EM_ASM_INT({
+            var s = localStorage.getItem("highestScore");
+            if (s) {
+                return s;
+            }
+            else {
+                return $0;
+            }
+        },
+            0));
+#else
+    pugi::xml_document doc;
+    doc.load_file((prefPath + "data.xml").c_str());
+    pugi::xml_node rootNode = doc.child("root");
+    highestScoreText.setText(renderer, robotoF, std::string("Highest score: ") + rootNode.child("highestScore").text().as_string("0"));
+#endif
+}
+
+void saveData(Text& highestScoreText)
+{
+#ifdef __EMSCRIPTEN__
+    EM_ASM({
+        localStorage.setItem("highestScore", $0);
+    },
+        std::stoi(highestScoreText.text.substr(15)));
+#else
+    pugi::xml_document doc;
+    pugi::xml_node rootNode = doc.append_child("root");
+    pugi::xml_node highestScoreNode = rootNode.append_child("highestScore");
+    highestScoreNode.append_child(pugi::node_pcdata).set_value(highestScoreText.text.substr(15).c_str());
+    doc.save_file((prefPath + "data.xml").c_str());
+#endif
+}
+
 int main(int argc, char* argv[])
 {
     std::srand(std::time(0));
@@ -773,6 +817,7 @@ int main(int argc, char* argv[])
     window = SDL_CreateWindow("FarmRodeo", SDL_WINDOWPOS_CENTERED, SDL_WINDOWPOS_CENTERED, windowWidth, windowHeight, SDL_WINDOW_RESIZABLE);
     renderer = SDL_CreateRenderer(window, -1, SDL_RENDERER_ACCELERATED);
     robotoF = TTF_OpenFont("res/roboto.ttf", 72);
+    prefPath = SDL_GetPrefPath("Huberti", "FarmRodeo");
     int w, h;
     SDL_GetWindowSize(window, &w, &h);
     SDL_RenderSetScale(renderer, w / (float)windowWidth, h / (float)windowHeight);
@@ -807,6 +852,8 @@ int main(int argc, char* argv[])
     backArrowR.h = 32;
     backArrowR.x = 0;
     backArrowR.y = 0;
+    Text highestScoreText;
+    highestScoreText.setText(renderer, robotoF, "Highest score: 0", { BLUE_COLOR });
 gameBegin:
     Entity player;
     player.r.w = 64;
@@ -914,7 +961,7 @@ gameBegin:
     std::vector<SDL_FRect> obstackles;
     bool jumping = false;
     bool isJumpingUp = true;
-    GameOverInit(gOverContainer, gOverTitleText, gOverScoreText, gOverOptions, GAMEOVER_NUM_OPTIONS, 10, gOverLabels, gOverTypes);
+    GameOverInit(gOverContainer, gOverTitleText, gOverScoreText, highestScoreText, gOverOptions, GAMEOVER_NUM_OPTIONS, 10, gOverLabels, gOverTypes);
     Text jumpText;
     jumpText.setText(renderer, robotoF, "Can Change: Yes");
     jumpText.dstR.w = jumpText.text.length() * LETTER_WIDTH * 0.5f;
@@ -931,7 +978,7 @@ gameBegin:
     SDL_SetWindowSize(window, 800, 600);
     SDL_RenderSetScale(renderer, 800 / (float)windowWidth, 600 / (float)windowHeight);
 #endif
-
+    loadData(highestScoreText);
     Clock globalClock;
     Clock playerAnimationClock;
     Clock obstacklesClock;
@@ -1359,8 +1406,12 @@ gameBegin:
                 RenderMenu(pauseContainer, pauseTitleText, pauseOptions, PAUSE_NUM_OPTIONS);
             }
             else if (state == State::GameOver) {
-                gOverScoreText.setText(renderer, robotoF, scoreText.text, { 0, 191, 255 });
+                gOverScoreText.setText(renderer, robotoF, scoreText.text, { BLUE_COLOR });
+                if (std::stoi(gOverScoreText.text.substr(7)) > std::stoi(highestScoreText.text.substr(15))) {
+                    highestScoreText.setText(renderer, robotoF, "Highest score: " + gOverScoreText.text.substr(7));
+                }
                 RenderGameOver(gOverContainer, gOverTitleText, gOverScoreText, gOverOptions, GAMEOVER_NUM_OPTIONS);
+                highestScoreText.draw(renderer);
 
                 scoreCounter = 0.0f;
                 stableCheck.restart();
@@ -1472,6 +1523,7 @@ gameBegin:
     Mix_FreeMusic(musicMainLoop);
     Mix_FreeMusic(musicGameover);
     Mix_CloseAudio();
+    saveData(highestScoreText);
     // TODO: On mobile remember to use eventWatch function (it doesn't reach this code when terminating)
     return 0;
 }
