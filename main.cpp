@@ -748,6 +748,18 @@ void setState(State& currState, State dstState, Mix_Chunk* sndDeath, Mix_Music* 
     }
 }
 
+void muteMusicAndSounds()
+{
+    Mix_VolumeMusic(0);
+    Mix_Volume(-1, 0);
+}
+
+void unmuteMusicAndSounds()
+{
+    Mix_VolumeMusic(128);
+    Mix_Volume(-1, 128);
+}
+
 int main(int argc, char* argv[])
 {
     std::srand(std::time(0));
@@ -772,6 +784,8 @@ int main(int argc, char* argv[])
     SDL_Texture* triangleT = IMG_LoadTexture(renderer, "res/triangle.png");
     SDL_Texture* playerT = IMG_LoadTexture(renderer, "res/player.png");
     SDL_Texture* obstackleT = IMG_LoadTexture(renderer, "res/obstackle.png");
+    SDL_Texture* mutedT = IMG_LoadTexture(renderer, "res/muted.png");
+    SDL_Texture* unmutedT = IMG_LoadTexture(renderer, "res/unmuted.png");
     State state = State::Main;
     Mix_Chunk* sndJump = Mix_LoadWAV("res/jump.wav");
     Mix_Chunk* sndClick = Mix_LoadWAV("res/click.wav");
@@ -785,6 +799,7 @@ int main(int argc, char* argv[])
     Mix_Music* musicGameover = Mix_LoadMUS("res/gameover.xm");
     Mix_VolumeMusic(MUSIC_VOLUME);
     Mix_PlayMusic(musicMainIntro, 0);
+    bool isMuted = false;
 gameBegin:
     Entity player;
     player.r.w = 64;
@@ -898,6 +913,11 @@ gameBegin:
     jumpText.dstR.x = 5;
     jumpText.dstR.y = windowHeight - jumpText.dstR.h - 5;
     bool canJump = true;
+    SDL_FRect muteBtnR;
+    muteBtnR.w = 32;
+    muteBtnR.h = 32;
+    muteBtnR.x = windowWidth - muteBtnR.w;
+    muteBtnR.y = 0;
 
     Clock globalClock;
     Clock playerAnimationClock;
@@ -1025,6 +1045,18 @@ gameBegin:
                         }
                     }
                 }
+                else if (state == State::Game) {
+                    if (SDL_PointInFRect(&mousePos, &muteBtnR)) {
+                        if (isMuted) {
+                            isMuted = false;
+                            unmuteMusicAndSounds();
+                        }
+                        else {
+                            isMuted = true;
+                            muteMusicAndSounds();
+                        }
+                    }
+                }
                 if (buttonUse) {
                     Mix_PlayChannel(-1, sndClick, 0);
                     if (state == State::Game) {
@@ -1099,14 +1131,6 @@ gameBegin:
             jumpText.setText(renderer, robotoF, canJump ? "Can Change: Yes" : "Can Change: No");
             if (wobbleChannel == -1) {
                 wobbleChannel = Mix_PlayChannel(-1, sndWobble, -1);
-            }
-            if (keys[SDL_SCANCODE_M] && !lastKeys[SDL_SCANCODE_M]) {
-                if (Mix_PausedMusic()) {
-                    Mix_ResumeMusic();
-                }
-                else {
-                    Mix_PauseMusic();
-                }
             }
             if (isPlaying) {
                 if (keys[SDL_SCANCODE_W]) {
@@ -1285,23 +1309,6 @@ gameBegin:
                     stableCheck.restart();
                 }
                 UpdateStability(rotation, rotationDir, stableLevels, stableLevel);
-                switch (stableLevel) {
-                case 0:
-                    Mix_Volume(wobbleChannel, 0);
-                    break;
-                case 1:
-                    Mix_Volume(wobbleChannel, 32);
-                    break;
-                case 2:
-                    Mix_Volume(wobbleChannel, 64);
-                    break;
-                case 3:
-                    Mix_Volume(wobbleChannel, 96);
-                    break;
-                case 4:
-                    Mix_Volume(wobbleChannel, 0);
-                    break;
-                }
                 if (stableLevel == 4) {
                     setState(state, State::GameOver, sndDeath, musicGameover);
                 }
@@ -1364,6 +1371,12 @@ gameBegin:
             jumpText.draw(renderer);
             for (int i = 0; i < obstackles.size(); ++i) {
                 SDL_RenderCopyF(renderer, obstackleT, 0, &obstackles[i]);
+            }
+            if (isMuted) {
+                SDL_RenderCopyF(renderer, mutedT, 0, &muteBtnR);
+            }
+            else {
+                SDL_RenderCopyF(renderer, unmutedT, 0, &muteBtnR);
             }
         }
 
