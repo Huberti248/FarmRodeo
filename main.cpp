@@ -773,6 +773,18 @@ int main(int argc, char* argv[])
     SDL_Texture* playerT = IMG_LoadTexture(renderer, "res/player.png");
     SDL_Texture* obstackleT = IMG_LoadTexture(renderer, "res/obstackle.png");
     State state = State::Main;
+    Mix_Chunk* sndJump = Mix_LoadWAV("res/jump.wav");
+    Mix_Chunk* sndClick = Mix_LoadWAV("res/click.wav");
+    Mix_Chunk* sndDeath = Mix_LoadWAV("res/death.wav");
+    Mix_Chunk* sndWobble = Mix_LoadWAV("res/wobble.wav");
+    int wobbleChannel = -1;
+    Mix_Chunk* sndPause = Mix_LoadWAV("res/pause.wav");
+    Mix_Music* musicGame = Mix_LoadMUS("res/music.ogg");
+    Mix_Music* musicMainIntro = Mix_LoadMUS("res/menu0.ogg");
+    Mix_Music* musicMainLoop = Mix_LoadMUS("res/menu1.ogg");
+    Mix_Music* musicGameover = Mix_LoadMUS("res/gameover.xm");
+    Mix_VolumeMusic(MUSIC_VOLUME);
+    Mix_PlayMusic(musicMainIntro, 0);
 gameBegin:
     Entity player;
     player.r.w = 64;
@@ -817,18 +829,6 @@ gameBegin:
     bool isPlaying = true;
     int selectedHorse = 0;
     int currentHorse = selectedHorse;
-    Mix_Chunk* sndJump = Mix_LoadWAV("res/jump.wav");
-    Mix_Chunk* sndClick = Mix_LoadWAV("res/click.wav");
-    Mix_Chunk* sndDeath = Mix_LoadWAV("res/death.wav");
-    Mix_Chunk* sndWobble = Mix_LoadWAV("res/wobble.wav");
-    int wobbleChannel = -1;
-    Mix_Chunk* sndPause = Mix_LoadWAV("res/pause.wav");
-    Mix_Music* musicGame = Mix_LoadMUS("res/music.ogg");
-    Mix_Music* musicMainIntro = Mix_LoadMUS("res/menu0.ogg");
-    Mix_Music* musicMainLoop = Mix_LoadMUS("res/menu1.ogg");
-    Mix_Music* musicGameover = Mix_LoadMUS("res/gameover.xm");
-    Mix_VolumeMusic(MUSIC_VOLUME);
-    Mix_PlayMusic(musicMainIntro, 0);
     bool introPlayed = true;
     Text scoreText;
     float scoreCounter = 0;
@@ -998,6 +998,7 @@ gameBegin:
                         if (SDL_PointInFRect(&mousePos, &mainOptions[i].buttonText.dstR)) {
                             HandleMenuOption(mainOptions[i].menuType, state, running);
                             if (state == State::Game) {
+                                Mix_PlayMusic(musicGame, -1);
                                 goto gameBegin;
                             }
                             buttonUse = true;
@@ -1009,6 +1010,7 @@ gameBegin:
                         if (SDL_PointInFRect(&mousePos, &gOverOptions[i].buttonText.dstR)) {
                             HandleMenuOption(gOverOptions[i].menuType, state, running);
                             if (state == State::Game) {
+                                Mix_PlayMusic(musicGame, -1);
                                 goto gameBegin;
                             }
                             buttonUse = true;
@@ -1112,6 +1114,9 @@ gameBegin:
                 }
                 if (jumping) {
                     if (selectedHorse == 0) {
+                        if (player.r.y == windowHeight / 2 - player.r.h / 2) {
+                            Mix_PlayChannel(-1, sndJump, 0);
+                        }
                         if (isJumpingUp) {
                             player.r.y -= deltaTime * JUMP_SPEED;
                         }
@@ -1132,6 +1137,9 @@ gameBegin:
                         }
                     }
                     else if (selectedHorse == 1) {
+                        if (secondHorse.r.y == windowHeight / 2 - player.r.h / 2 - secondHorse.r.h - 50) {
+                            Mix_PlayChannel(-1, sndJump, 0);
+                        }
                         if (isJumpingUp) {
                             secondHorse.r.y -= deltaTime * JUMP_SPEED;
                         }
@@ -1152,6 +1160,9 @@ gameBegin:
                         }
                     }
                     else if (selectedHorse == 2) {
+                        if (thirdHorse.r.y == windowHeight / 2 - player.r.h / 2 + player.r.h + 50) {
+                            Mix_PlayChannel(-1, sndJump, 0);
+                        }
                         if (isJumpingUp) {
                             thirdHorse.r.y -= deltaTime * JUMP_SPEED;
                         }
