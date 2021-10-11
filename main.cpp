@@ -1190,10 +1190,9 @@ gameBegin:
             }
             if (state == State::Game) {
                 jumpText.setText(renderer, robotoF, canJump ? "Can Change: Yes" : "Can Change: No");
-                if (wobbleChannel == -1) {
-                    wobbleChannel = Mix_PlayChannel(-1, sndWobble, -1);
-                }
                 if (isPlaying) {
+                    wobbleChannel = Mix_PlayChannel(-1, sndWobble, 1);
+                    Mix_Volume(wobbleChannel, 32);
                     if (keys[SDL_SCANCODE_W]) {
                         jumping = true;
                     }
@@ -1374,9 +1373,6 @@ gameBegin:
                         setState(state, State::GameOver, sndDeath, musicGameover);
                     }
                 }
-                else { // !isPlaying
-                    Mix_Volume(wobbleChannel, 0);
-                }
                 if (selectedHorse == 0) {
                     triangleR.x = player.r.x + player.r.w / 2 - triangleR.w / 2;
                     triangleR.y = player.r.y - triangleR.h + 20;
@@ -1388,11 +1384,6 @@ gameBegin:
                 else if (selectedHorse == 2) {
                     triangleR.x = thirdHorse.r.x + thirdHorse.r.w / 2 - triangleR.w / 2;
                     triangleR.y = thirdHorse.r.y - triangleR.h + 20;
-                }
-            }
-            else if (state == State::Paused) {
-                if (wobbleChannel != -1) {
-                    Mix_Volume(wobbleChannel, 0);
                 }
             }
 
