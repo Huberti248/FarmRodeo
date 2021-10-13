@@ -1,0 +1,4 @@
+#Wed Oct 13 10:50:22 CEST 2021
+base.0=C\:\\home\\dev\\EndlessRunner\\android\\app\\build\\intermediates\\dex\\debug\\out\\classes.dex
+renamed.0=classes.dex
+path.0=classes.dex

@@ -1,0 +1,4 @@
+C:/home/dev/EndlessRunner/android/app/jni/src/../../../../main.cpp:605:13: warning: enumeration value 'Restart' not handled in switch [-Wswitch]
+    switch (option) {
+            ^
+1 warning generated.

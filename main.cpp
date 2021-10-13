@@ -833,6 +833,9 @@ int main(int argc, char* argv[])
     SDL_Texture* mutedT = IMG_LoadTexture(renderer, "res/muted.png");
     SDL_Texture* unmutedT = IMG_LoadTexture(renderer, "res/unmuted.png");
     SDL_Texture* backArrowT = IMG_LoadTexture(renderer, "res/backArrow.png");
+    SDL_Texture* greenCircleT = IMG_LoadTexture(renderer, "res/greenCircle.png");
+    SDL_Texture* orangeCircleT = IMG_LoadTexture(renderer, "res/orangeCircle.png");
+    SDL_Texture* swapT = IMG_LoadTexture(renderer, "res/swap.png");
     State state = State::Main;
     Mix_Chunk* sndJump = Mix_LoadWAV("res/jump.wav");
     Mix_Chunk* sndClick = Mix_LoadWAV("res/click.wav");
@@ -855,6 +858,28 @@ int main(int argc, char* argv[])
     Text highestScoreText;
     highestScoreText.setText(renderer, robotoF, "Highest score: 0", { BLUE_COLOR });
 gameBegin:
+#ifdef __ANDROID__
+    SDL_Rect controlLimitR;
+    controlLimitR.w = 64;
+    controlLimitR.h = 64;
+    controlLimitR.x = windowWidth - controlLimitR.w - 50;
+    controlLimitR.y = windowHeight - controlLimitR.h - 50;
+    SDL_FRect jumpBtnR;
+    jumpBtnR.w = 32;
+    jumpBtnR.h = 32;
+    jumpBtnR.x = controlLimitR.x + controlLimitR.w;
+    jumpBtnR.y = controlLimitR.y - jumpBtnR.h;
+    bool moving = false;
+    SDL_Point controlPressOffsetP{};
+    SDL_FRect controlR;
+    controlR.w = 16;
+    controlR.h = 16;
+    controlR.x = controlLimitR.x + controlLimitR.w / 2 - controlR.w / 2;
+    controlR.y = controlLimitR.y + controlLimitR.h / 2 - controlR.h / 2;
+    SDL_FPoint controlInitP;
+    controlInitP.x = controlR.x;
+    controlInitP.y = controlR.y;
+#endif
     Entity player;
     player.r.w = 64;
     player.r.h = 64;
@@ -1107,6 +1132,17 @@ gameBegin:
                         }
                     }
                     else if (state == State::Game) {
+                        if (!isPlaying) {
+                            if (SDL_PointInFRect(&mousePos, &player.r)) {
+                                selectedHorse = 0;
+                            }
+                            if (SDL_PointInFRect(&mousePos, &secondHorse.r)) {
+                                selectedHorse = 1;
+                            }
+                            if (SDL_PointInFRect(&mousePos, &thirdHorse.r)) {
+                                selectedHorse = 2;
+                            }
+                        }
                         if (SDL_PointInFRect(&mousePos, &muteBtnR)) {
                             if (isMuted) {
                                 isMuted = false;
@@ -1117,6 +1153,43 @@ gameBegin:
                                 muteMusicAndSounds();
                             }
                         }
+#ifdef __ANDROID__
+                        if (SDL_PointInFRect(&mousePos, &controlR)) {
+                            moving = true;
+                            controlPressOffsetP.x = mousePos.x - controlR.x;
+                            controlPressOffsetP.y = mousePos.y - controlR.y;
+                        }
+                        else if (SDL_PointInRect(&mousePos, &controlLimitR)) {
+                            controlR.x = mousePos.x;
+                            controlR.y = mousePos.y;
+                            moving = true;
+                            controlPressOffsetP.x = mousePos.x - controlR.x;
+                            controlPressOffsetP.y = mousePos.y - controlR.y;
+                        }
+                        if (SDL_PointInFRect(&mousePos, &jumpBtnR)) {
+                            bool wasPlaying = isPlaying;
+                            if (isPlaying && canJump) {
+                                isPlaying = false;
+                                Mix_PlayChannel(-1, sndPause, 0);
+                            }
+                            else if (!isPlaying) {
+                                isPlaying = true;
+                                Mix_PlayChannel(-1, sndPause, 0);
+                            }
+
+                            if (isPlaying && !wasPlaying) {
+                                if (currentHorse != selectedHorse) {
+                                    canJump = false;
+                                    stableLevel = 0;
+                                    stableCheck.restart();
+                                    rotation = 0.0f;
+                                }
+                            }
+                            else {
+                                currentHorse = selectedHorse;
+                            }
+                        }
+#endif
                     }
                     if (buttonUse) {
                         Mix_PlayChannel(-1, sndClick, 0);
@@ -1147,6 +1220,11 @@ gameBegin:
                 }
                 if (event.type == SDL_MOUSEBUTTONUP) {
                     buttons[event.button.button] = false;
+#ifdef __ANDROID__
+                    moving = false;
+                    controlR.x = controlInitP.x;
+                    controlR.y = controlInitP.y;
+#endif
                 }
                 if (event.type == SDL_MOUSEMOTION) {
                     float scaleX, scaleY;
@@ -1191,6 +1269,36 @@ gameBegin:
             if (state == State::Game) {
                 jumpText.setText(renderer, robotoF, canJump ? "Can Change: Yes" : "Can Change: No");
                 if (isPlaying) {
+#ifdef __ANDROID__
+                    if (moving) {
+                        controlR.x = mousePos.x - controlPressOffsetP.x;
+                        controlR.y = mousePos.y - controlPressOffsetP.y;
+                        if (controlR.x < controlLimitR.x) {
+                            controlR.x = controlLimitR.x;
+                        }
+                        if (controlR.y < controlLimitR.y) {
+                            controlR.y = controlLimitR.y;
+                        }
+                        if (controlR.x + controlR.w > controlLimitR.x + controlLimitR.w) {
+                            controlR.x = controlLimitR.x + controlLimitR.w - controlR.w;
+                        }
+                        if (controlR.y + controlR.h > controlLimitR.y + controlLimitR.h) {
+                            controlR.y = controlLimitR.y + controlLimitR.h - controlR.h;
+                        }
+                        if (selectedHorse == 0) {
+                            player.r.x += (controlR.x - controlInitP.x) * 0.004 * deltaTime;
+                        }
+                        if (selectedHorse == 1) {
+                            secondHorse.r.x += (controlR.x - controlInitP.x) * 0.004 * deltaTime;
+                        }
+                        if (selectedHorse == 2) {
+                            thirdHorse.r.x += (controlR.x - controlInitP.x) * 0.004 * deltaTime;
+                        }
+                        if (controlR.y < controlLimitR.y + controlLimitR.h / 2 - 20) {
+                            jumping = true;
+                        }
+                    }
+#endif
                     wobbleChannel = Mix_PlayChannel(-1, sndWobble, 1);
                     Mix_Volume(wobbleChannel, 32);
                     if (keys[SDL_SCANCODE_W]) {
@@ -1434,6 +1542,11 @@ gameBegin:
                 else {
                     SDL_RenderCopyF(renderer, unmutedT, 0, &muteBtnR);
                 }
+#ifdef __ANDROID__
+                SDL_RenderCopy(renderer, greenCircleT, 0, &controlLimitR);
+                SDL_RenderCopyF(renderer, orangeCircleT, 0, &controlR);
+                SDL_RenderCopyF(renderer, swapT, 0, &jumpBtnR);
+#endif
             }
 
             SDL_RenderPresent(renderer);
