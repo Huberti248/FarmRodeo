@@ -8,7 +8,7 @@ INJECTED from C:\home\dev\EndlessRunner\android\app\src\main\AndroidManifest.xml
 INJECTED from C:\home\dev\EndlessRunner\android\app\src\main\AndroidManifest.xml:5:1-92:12
 INJECTED from C:\home\dev\EndlessRunner\android\app\src\main\AndroidManifest.xml:5:1-92:12
 	package
-		ADDED from C:\home\dev\EndlessRunner\android\app\src\main\AndroidManifest.xml:6:5-29
+		ADDED from C:\home\dev\EndlessRunner\android\app\src\main\AndroidManifest.xml:6:5-36
 		INJECTED from C:\home\dev\EndlessRunner\android\app\src\main\AndroidManifest.xml
 		INJECTED from C:\home\dev\EndlessRunner\android\app\src\main\AndroidManifest.xml
 	android:versionName
@@ -18,7 +18,7 @@ INJECTED from C:\home\dev\EndlessRunner\android\app\src\main\AndroidManifest.xml
 	xmlns:android
 		ADDED from C:\home\dev\EndlessRunner\android\app\src\main\AndroidManifest.xml:5:11-69
 	android:versionCode
-		ADDED from C:\home\dev\EndlessRunner\android\app\src\main\AndroidManifest.xml:7:5-28
+		ADDED from C:\home\dev\EndlessRunner\android\app\src\main\AndroidManifest.xml:7:5-29
 		INJECTED from C:\home\dev\EndlessRunner\android\app\src\main\AndroidManifest.xml
 		INJECTED from C:\home\dev\EndlessRunner\android\app\src\main\AndroidManifest.xml
 	android:installLocation
@@ -85,7 +85,7 @@ ADDED from C:\home\dev\EndlessRunner\android\app\src\main\AndroidManifest.xml:61
 		ADDED from C:\home\dev\EndlessRunner\android\app\src\main\AndroidManifest.xml:63:9-35
 	android:theme
 		ADDED from C:\home\dev\EndlessRunner\android\app\src\main\AndroidManifest.xml:64:9-67
-activity#org.libsdl.app.SDLActivity
+activity#com.huberti.farmrodeo.SDLActivity
 ADDED from C:\home\dev\EndlessRunner\android\app\src\main\AndroidManifest.xml:71:9-89:20
 	android:label
 		ADDED from C:\home\dev\EndlessRunner\android\app\src\main\AndroidManifest.xml:72:13-45

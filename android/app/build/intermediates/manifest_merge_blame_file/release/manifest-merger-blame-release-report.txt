@@ -4,9 +4,9 @@
 4     com.gamemaker.game
 5-->
 6<manifest xmlns:android="http://schemas.android.com/apk/res/android"
-7    package="org.libsdl.app"
+7    package="com.huberti.farmrodeo"
 8    android:installLocation="auto"
-9    android:versionCode="1"
+9    android:versionCode="10"
 10    android:versionName="1.0" >
 11
 12    <uses-sdk
@@ -112,7 +112,7 @@
 79
 80        <activity
 80-->C:\home\dev\EndlessRunner\android\app\src\main\AndroidManifest.xml:71:9-89:20
-81            android:name="org.libsdl.app.SDLActivity"
+81            android:name="com.huberti.farmrodeo.SDLActivity"
 81-->C:\home\dev\EndlessRunner\android\app\src\main\AndroidManifest.xml:71:19-45
 82            android:alwaysRetainTaskState="true"
 82-->C:\home\dev\EndlessRunner\android\app\src\main\AndroidManifest.xml:73:13-49
